@@ -96,6 +96,8 @@ pip install -r requirements.txt
 
 ## Шаг 4. Файл `.env`
 
+Шаблон для **`cursorrpa`** на dev-rpa: [config.cursorrpa.example.env](../services/telegram-bridge/config.cursorrpa.example.env) — можно `cp config.cursorrpa.example.env .env` вместо общего `config.example.env`.
+
 ```bash
 cd ~/CursorRPA/services/telegram-bridge
 cp config.example.env .env
