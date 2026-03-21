@@ -1,0 +1,17 @@
+[Unit]
+Description=Cursor RPA Telegram bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shevbo
+Group=shevbo
+WorkingDirectory=/home/shevbo/CursorRPA/services/telegram-bridge
+EnvironmentFile=/home/shevbo/CursorRPA/services/telegram-bridge/.env
+ExecStart=/home/shevbo/CursorRPA/services/telegram-bridge/.venv/bin/python /home/shevbo/CursorRPA/services/telegram-bridge/bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

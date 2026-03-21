@@ -1,0 +1,17 @@
+[Unit]
+Description=Cursor RPA Telegram bridge (user cursorrpa)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cursorrpa
+Group=cursorrpa
+WorkingDirectory=/home/cursorrpa/CursorRPA/services/telegram-bridge
+EnvironmentFile=/home/cursorrpa/CursorRPA/services/telegram-bridge/.env
+ExecStart=/home/cursorrpa/CursorRPA/services/telegram-bridge/.venv/bin/python /home/cursorrpa/CursorRPA/services/telegram-bridge/bot.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
