@@ -50,6 +50,8 @@ BUILD_APK_SCRIPT = os.environ.get("BUILD_APK_SCRIPT", "").strip()
 # Telegram лимит 4096; оставляем запас под заголовок «часть N/M»
 MESSAGE_MAX = int(os.environ.get("TELEGRAM_MESSAGE_MAX_CHARS", "4000"))
 TYPING_INTERVAL_SEC = float(os.environ.get("TELEGRAM_TYPING_INTERVAL_SEC", "4.5"))
+# Сообщение админам при старте бота (post_init). Пусто = не слать.
+STARTUP_MESSAGE = os.environ.get("TELEGRAM_STARTUP_MESSAGE", "Привет").strip()
 
 STATE_DIR = Path(os.environ.get("TELEGRAM_STATE_DIR", "~/.config/cursor-rpa")).expanduser()
 STATE_FILE = STATE_DIR / "telegram_bridge_state.json"
@@ -187,6 +189,21 @@ async def _reply_chunks(message, text: str, prefix: str = "") -> None:
     body = f"{prefix}{text}" if prefix else text
     for part in _split_message(body):
         await message.reply_text(part)
+
+
+async def _post_init(application: Application) -> None:
+    """Личное сообщение админам из TELEGRAM_ALLOWED_USER_IDS при старте."""
+    if not STARTUP_MESSAGE:
+        return
+    if not ALLOWED:
+        log.info("TELEGRAM_ALLOWED_USER_IDS пуст — привет при старте не отправляем")
+        return
+    for admin_id in sorted(ALLOWED):
+        try:
+            await application.bot.send_message(chat_id=admin_id, text=STARTUP_MESSAGE)
+            log.info("Привет при старте отправлен admin_id=%s", admin_id)
+        except Exception as e:
+            log.warning("Не удалось отправить привет admin_id=%s: %s", admin_id, e)
 
 
 def _help_text() -> str:
@@ -488,7 +505,7 @@ def main() -> None:
         log.warning("Нет файла RPA_SCRIPT: %s", RPA_SCRIPT)
     if FIXED_WORKSPACE is not None:
         log.info("Режим фиксированного workspace: %s", FIXED_WORKSPACE)
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("ping", cmd_ping))
