@@ -4,10 +4,12 @@
 # Только cursorrpa (спросит пароль sudo несколько раз):
 #   bash dev-rpa-setup-cursorrpa-and-sudo.sh
 #
-# Плюс passwordless sudo для shevbo (ОДИН раз спросит пароль, дальше sudo без пароля):
-#   bash dev-rpa-setup-cursorrpa-and-sudo.sh --nopasswd-sudo
+# Плюс passwordless sudo (ОДИН раз спросит пароль текущего пользователя с sudo):
+#   bash dev-rpa-setup-cursorrpa-and-sudo.sh --nopasswd-sudo          # только shevbo
+#   bash dev-rpa-setup-cursorrpa-and-sudo.sh --nopasswd-cursorrpa      # только cursorrpa
+#   bash dev-rpa-setup-cursorrpa-and-sudo.sh --nopasswd-sudo --nopasswd-cursorrpa
 #
-# ВНИМАНИЕ: --nopasswd-sudo даёт shevbo полный sudo без пароля. Только на своей dev-VM.
+# ВНИМАНИЕ: NOPASSWD: ALL — полный root без пароля для указанного пользователя. Только на своей dev-VM.
 
 set -euo pipefail
 
@@ -54,8 +56,29 @@ nopasswd_sudo_shevbo() {
   fi
 }
 
+nopasswd_sudo_cursorrpa() {
+  echo "=== Passwordless sudo для cursorrpa ==="
+  if ! id cursorrpa &>/dev/null; then
+    echo "Пользователь cursorrpa не найден. Сначала запустите скрипт без флагов." >&2
+    exit 1
+  fi
+  if sudo test -f /etc/sudoers.d/99-cursorrpa-nopasswd; then
+    echo "Файл уже есть: /etc/sudoers.d/99-cursorrpa-nopasswd"
+    sudo cat /etc/sudoers.d/99-cursorrpa-nopasswd
+  else
+    echo 'cursorrpa ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/99-cursorrpa-nopasswd >/dev/null
+    sudo chmod 440 /etc/sudoers.d/99-cursorrpa-nopasswd
+    sudo visudo -c -f /etc/sudoers.d/99-cursorrpa-nopasswd
+    echo "Создан /etc/sudoers.d/99-cursorrpa-nopasswd"
+  fi
+  echo "Проверка: ssh cursorrpa@... затем sudo -n true"
+}
+
 create_cursorrpa
 
-if [[ "${1:-}" == "--nopasswd-sudo" ]]; then
-  nopasswd_sudo_shevbo
-fi
+for arg in "$@"; do
+  case "$arg" in
+    --nopasswd-sudo) nopasswd_sudo_shevbo ;;
+    --nopasswd-cursorrpa) nopasswd_sudo_cursorrpa ;;
+  esac
+done

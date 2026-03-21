@@ -32,6 +32,14 @@ ls -la ~/workspaces
 **Пошагово и безпарольный sudo для shevbo:** [dev-rpa-copy-paste-ru.md](dev-rpa-copy-paste-ru.md)  
 Скрипт в репозитории: [scripts/dev-rpa-setup-cursorrpa-and-sudo.sh](../scripts/dev-rpa-setup-cursorrpa-and-sudo.sh)
 
+**Passwordless sudo для `cursorrpa`** (чтобы не вводить пароль при каждом `sudo`): на dev-rpa под `shevbo` (или другим пользователем с `sudo`), один раз после копирования скрипта на сервер:
+
+```bash
+bash dev-rpa-setup-cursorrpa-and-sudo.sh --nopasswd-cursorrpa
+```
+
+Создаётся `/etc/sudoers.d/99-cursorrpa-nopasswd` (`cursorrpa ALL=(ALL) NOPASSWD: ALL`). Риск: компрометация аккаунта `cursorrpa` = полный root без пароля — только на своей dev-VM.
+
 Кратко вручную (под `ssh dev-rpa`):
 
 ```bash
