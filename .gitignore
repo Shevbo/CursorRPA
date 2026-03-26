@@ -6,3 +6,8 @@ apikey.txt
 **/.venv/
 **/__pycache__/
 *.pyc
+
+# Auto-generated / local artifacts (не коммитить)
+.next-start.log
+CursorRPA.code-workspace
+backups/
