@@ -1,0 +1,13 @@
+---
+pid: 10576
+cwd: "C:\\dev\\CursorRPA"
+command: "& 'C:\\Program Files\\Git\\bin\\bash.exe' -lc \"tar --exclude='.next' --exclude='node_modules' --exclude='.git' -cf - -C /c/dev/PiranhaAI . | ssh -o BatchMode=yes shectory-work 'tar -xf - -C /home/shectory/workspaces/PiranhaAI'\""
+started_at: 2026-03-24T11:08:06.855Z
+running_for_seconds: 320   
+---
+
+---
+exit_code: 4294967295
+elapsed_ms: 322480
+ended_at: 2026-03-24T11:13:29.335Z
+---

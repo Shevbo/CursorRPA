@@ -6,13 +6,13 @@
 
 ## Вариант A — только файл на сервере (удобно)
 
-С ПК скопируйте скрипт на dev-rpa:
+Скопируйте скрипт на dev-rpa:
 
 ```powershell
-scp "C:\Users\Boris\CursorRPA\scripts\dev-rpa-setup-cursorrpa-and-sudo.sh" dev-rpa:~/
+scp "./scripts/dev-rpa-setup-cursorrpa-and-sudo.sh" dev-rpa:~/
 ```
 
-На сервере (если копировали с Windows — уберите **CRLF**, иначе ошибка `$'\r': command not found`):
+На сервере (если файл в формате CRLF — уберите переводы строк, иначе ошибка `$'\r': command not found`):
 
 ```bash
 sed -i 's/\r$//' ~/dev-rpa-setup-cursorrpa-and-sudo.sh
@@ -39,7 +39,7 @@ if [[ -f /home/shevbo/.ssh/authorized_keys ]]; then
   echo "SSH: authorized_keys скопирован"
 else echo "ВНИМАНИЕ: нет /home/shevbo/.ssh/authorized_keys"; fi
 sudo chown -R cursorrpa:cursorrpa /home/cursorrpa
-echo "Готово. С ПК: ssh dev-rpa-cursorrpa"
+echo "Готово. Подключение: ssh dev-rpa-cursorrpa"
 ENDOFSCRIPT
 ```
 
@@ -88,7 +88,7 @@ sudo visudo -c
 Если под `shevbo` уже установлен `agent` и есть `~/.config/cursor-rpa/env.sh`, скопируйте в домашний каталог `cursorrpa` одним скриптом (на dev-rpa под **`shevbo`**):
 
 ```powershell
-scp "C:\Users\Boris\CursorRPA\scripts\sync-cursor-tools-shevbo-to-cursorrpa.sh" dev-rpa:~/
+scp "./scripts/sync-cursor-tools-shevbo-to-cursorrpa.sh" dev-rpa:~/
 ```
 
 ```bash
@@ -106,7 +106,7 @@ chmod +x ~/sync-cursor-tools-shevbo-to-cursorrpa.sh
 Если у `cursorrpa` уже есть `agent`, а **`env.sh` отсутствует** или в каталоге остался только **`.env.sh.swp`** (vim не сохранил файл):
 
 ```powershell
-scp "C:\Users\Boris\CursorRPA\scripts\cursorrpa-sync-env-from-shevbo.sh" dev-rpa:~/
+scp "./scripts/cursorrpa-sync-env-from-shevbo.sh" dev-rpa:~/
 ```
 
 ```bash

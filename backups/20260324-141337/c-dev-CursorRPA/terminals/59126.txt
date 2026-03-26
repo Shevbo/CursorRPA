@@ -1,0 +1,13 @@
+---
+pid: 3848
+cwd: "C:\\dev\\CursorRPA"
+command: "& 'C:\\Program Files\\Git\\usr\\bin\\scp.exe' -r \"C:\\dev\\PiranhaAI\" shectory-work:/home/shectory/workspaces/"
+started_at: 2026-03-23T16:55:45.663Z
+running_for_seconds: 210   
+---
+
+---
+exit_code: 1
+elapsed_ms: 213798
+ended_at: 2026-03-23T16:59:19.461Z
+---

@@ -1,0 +1,13 @@
+---
+pid: 5856
+cwd: "C:\\dev\\CursorRPA"
+command: "& 'C:\\Program Files\\Git\\usr\\bin\\ssh.exe' -o BatchMode=yes shectory-work 'timeout 5 bash -lc \"cat </dev/tcp/172.24.71.157/22 >/dev/null && echo PORT_OPEN || echo PORT_CLOSED\"'"
+started_at: 2026-03-23T10:57:06.576Z
+running_for_seconds: 80    
+---
+
+---
+exit_code: 1
+elapsed_ms: 81635
+ended_at: 2026-03-23T10:58:28.211Z
+---

@@ -111,6 +111,19 @@ def _allowed(user_id: int | None) -> bool:
     return user_id in ALLOWED
 
 
+def _subprocess_cwd() -> str:
+    """Каталог для bash/agent: не наследуем cwd процесса бота — после mv/rm старый cwd бывает (deleted)."""
+    override = os.environ.get("TELEGRAM_BRIDGE_SUBPROCESS_CWD", "").strip()
+    if override:
+        p = Path(override).expanduser()
+        if p.is_dir():
+            return str(p.resolve())
+    home = Path.home()
+    if home.is_dir():
+        return str(home.resolve())
+    return "/"
+
+
 def _run_bash(script: str, env_extra: dict | None = None) -> tuple[int, str, str]:
     env = os.environ.copy()
     if env_extra:
@@ -124,6 +137,7 @@ def _run_bash(script: str, env_extra: dict | None = None) -> tuple[int, str, str
         text=True,
         timeout=AGENT_TIMEOUT,
         env=env,
+        cwd=_subprocess_cwd(),
     )
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 

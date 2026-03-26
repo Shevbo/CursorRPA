@@ -34,7 +34,7 @@ create_cursorrpa() {
   fi
 
   sudo chown -R cursorrpa:cursorrpa /home/cursorrpa
-  echo "Готово. С ПК: ssh dev-rpa-cursorrpa"
+  echo "Готово. Подключение: ssh dev-rpa-cursorrpa"
   echo "Дальше: скопировать agent и env.sh с shevbo — см. scripts/sync-cursor-tools-shevbo-to-cursorrpa.sh"
 }
 

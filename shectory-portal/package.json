@@ -1,0 +1,38 @@
+{
+  "name": "shectory-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "prisma generate --schema=../prisma/schema.prisma && next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "postinstall": "prisma generate --schema=../prisma/schema.prisma",
+    "db:generate": "prisma generate --schema=../prisma/schema.prisma",
+    "db:push": "prisma db push --schema=../prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema=../prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=../prisma/schema.prisma",
+    "db:seed": "npx tsx ../prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "next": "14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "mermaid": "^11.4.0"
+  },
+  "prisma": {
+    "schema": "../prisma/schema.prisma",
+    "seed": "tsx ../prisma/seed.ts"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0",
+    "typescript": "^5.6.3",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "tailwindcss": "^3.4.15",
+    "postcss": "^8",
+    "autoprefixer": "^10",
+    "tsx": "^4.19.2"
+  }
+}

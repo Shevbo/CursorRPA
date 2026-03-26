@@ -142,7 +142,7 @@ agent -p --trust --workspace /srv/workspaces/project-a --resume CHAT_ID \
 - **`LIST_CHATS`** выводит последние записи из `chats.log` для данного workspace (не вызывает `agent ls`).
 - **`QUERY` / `APPLY`** — `agent -p` с `--resume` при непустом `CHAT_ID`.
 
-Если копируете скрипт с Windows на Linux, уберите CRLF: `perl -pi -e 's/\r//g' ~/.local/bin/rpa-agent.sh`.
+Если файл пришел в формате CRLF, уберите переводы строк: `perl -pi -e 's/\r//g' ~/.local/bin/rpa-agent.sh`.
 
 ### 0.9 (Опционально) Desktop Cursor на Linux
 

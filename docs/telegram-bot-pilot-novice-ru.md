@@ -41,7 +41,7 @@ agent -p --trust --output-format text "Ответь одним словом: OK"
    ```bash
    cat ~/.ssh/id_ed25519.pub
    ```
-   Это **одна длинная строка**: сначала `ssh-ed25519`, потом длинный набор букв/цифр, в конце комментарий (например `cursorrpa@cursorrpa`). Скопируйте **всю строку целиком** (в терминале обычно выделить мышью и Ctrl+Shift+C / ПКМ → Copy).
+   Это **одна длинная строка**: сначала `ssh-ed25519`, потом длинный набор букв/цифр, в конце комментарий (например `cursorrpa@cursorrpa`). Скопируйте **всю строку целиком**.
 2. В браузере войдите в GitHub под **своим** аккаунтом (тот, у которого есть доступ к репозиторию CursorRPA).
 3. Откройте: [github.com/settings/keys](https://github.com/settings/keys) (или **Settings** → слева **SSH and GPG keys**).
 4. Нажмите зелёную кнопку **New SSH key**.
@@ -60,10 +60,10 @@ git clone <URL_вашего_репозитория_CursorRPA> CursorRPA
 cd CursorRPA/services/telegram-bridge
 ```
 
-**Вариант B — копирование с Windows (PowerShell на вашем ПК):**
+**Вариант B — копирование через `scp`:**
 
 ```powershell
-scp -r "C:\Users\Boris\CursorRPA\services\telegram-bridge" dev-rpa:~/CursorRPA/services/
+scp -r "./services/telegram-bridge" dev-rpa:~/CursorRPA/services/
 ```
 
 (Если у вас другой `Host` в SSH config — замените `dev-rpa` на него.)
@@ -195,7 +195,7 @@ journalctl -u cursor-telegram-bridge -f --no-pager
 ```bash
 cd ~/CursorRPA
 git pull
-# или снова scp с ПК
+# или снова scp из вашего текущего окружения
 ```
 
 Затем перезапуск:
@@ -214,7 +214,7 @@ sudo systemctl restart cursor-telegram-bridge
 |---------|----------------|
 | Бот молчит | Токен в `.env`, интернет с сервера, `journalctl` |
 | «Доступ запрещён» | Ваш Telegram ID в `TELEGRAM_ALLOWED_USER_IDS` без пробелов |
-| Ошибка про `rpa-agent.sh` | Путь в `RPA_AGENT_SCRIPT`, `chmod +x`, нет ли `\r` в файле (Windows) |
+| Ошибка про `rpa-agent.sh` | Путь в `RPA_AGENT_SCRIPT`, `chmod +x`, нет ли `\r` в файле (CRLF) |
 | Ошибка агента / таймаут | `CURSOR_API_KEY`, `AGENT_TIMEOUT_SEC`, логи в консоли |
 | Workspace не найден | Путь в `CURSOR_RPA_FIXED_WORKSPACE`, `mkdir -p` |
 | `Authentication required` / ключ | Файл `env.sh` существует, в нём `export CURSOR_API_KEY=...`, перед запуском бота: `source` этого файла или верный `CURSOR_ENV_FILE` в `.env` |

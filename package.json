@@ -1,0 +1,19 @@
+{
+  "name": "cursorrpa",
+  "private": true,
+  "description": "Монолит CursorRPA. Схема Prisma: prisma/schema.prisma. Все команды Prisma выполняются через пакет shectory-portal (единый @prisma/client).",
+  "scripts": {
+    "db:generate": "npm run db:generate --prefix shectory-portal",
+    "db:push": "npm run db:push --prefix shectory-portal",
+    "db:migrate:dev": "npm run db:migrate:dev --prefix shectory-portal",
+    "db:studio": "npm run db:studio --prefix shectory-portal",
+    "db:seed": "npm run db:seed --prefix shectory-portal",
+    "db:sync": "npm run db:push --prefix shectory-portal && npm run db:generate --prefix shectory-portal && npm run db:seed --prefix shectory-portal"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  }
+}

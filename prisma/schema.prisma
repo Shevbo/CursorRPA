@@ -1,0 +1,337 @@
+// Единая схема БД монолита CursorRPA (Shectory Portal + будущие сервисы).
+// Клиент генерируется в shectory-portal: npm run db:generate (из portal) или npm run db:generate из корня.
+// Подключение: переменная окружения DATABASE_URL (Postgres, в т.ч. Hoster).
+
+generator client {
+  provider = "prisma-client-js"
+  // Monorepo: Next.js app lives in shectory-portal/, so generate engine/client there.
+  output   = "../shectory-portal/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Прикладной / мета-проект платформы Shectory
+model Project {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  name                  String
+  /// Короткий префикс (латиница, до 5 символов) для ключей тикетов: ABC-123
+  ticketPrefix          String?  @unique @map("ticket_prefix")
+  workspacePath         String   @map("workspace_path")
+  /// Публичный URL UI (если есть)
+  uiUrl                 String?  @map("ui_url")
+  owner                 String?
+  maintainer            String?
+  stage                 String   @default("dev")
+  status                String   @default("active")
+  description           String   @db.Text
+  /// Mind map / архитектура в нотации Mermaid (flowchart, mindmap)
+  architectureMermaid   String   @map("architecture_mermaid") @db.Text
+  repoUrl               String?  @map("repo_url")
+  docsUrl               String?  @map("docs_url")
+  boardUrl              String?  @map("board_url")
+  runbookUrl            String?  @map("runbook_url")
+  /// JSON метаданные по серверам/модулям/админ-ссылкам (без секретов)
+  registryMetaJson      Json?    @map("registry_meta_json")
+  createdSource         String   @default("auto") @map("created_source")
+  workspaceReady        Boolean  @default(false) @map("workspace_ready")
+  sshReady              Boolean  @default(false) @map("ssh_ready")
+  gitReady              Boolean  @default(false) @map("git_ready")
+  lastSyncAt            DateTime? @map("last_sync_at")
+  syncError             String?  @map("sync_error") @db.Text
+  version               String   @default("0.0.0")
+  moduleVersionsJson    Json?    @map("module_versions_json")
+  lastDeployedAt        DateTime? @map("last_deployed_at")
+  /// Контекст для других ИИ (архитектура / инженерия / разработка)
+  aiContext             String   @map("ai_context") @db.Text
+  techStack             TechStackItem[]
+  chats                 ChatSession[]
+  backlogItems          BacklogItem[]
+  sprints               Sprint[]
+  ticketCounter         ProjectTicketCounter?
+  testCaseCounter       ProjectTestCaseCounter?
+  testModules           TestModule[]
+  testCases             TestCase[]
+  deployEnvironments    DeployEnvironment[]
+  agentRuns             AgentRun[]
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("projects")
+}
+
+model TechStackItem {
+  id         String  @id @default(cuid())
+  projectId  String  @map("project_id")
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name       String
+  vendorUrl  String  @map("vendor_url")
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  @@index([projectId])
+  @@map("tech_stack_items")
+}
+
+/// Справочник произвольных тегов/категорий (навигатор)
+model ReferenceCategory {
+  id    String            @id @default(cuid())
+  name  String
+  items ReferenceItem[]
+
+  @@map("reference_categories")
+}
+
+model ReferenceItem {
+  id         String            @id @default(cuid())
+  categoryId String            @map("category_id")
+  category   ReferenceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  label      String
+  value      String            @db.Text
+
+  @@index([categoryId])
+  @@map("reference_items")
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  projectId String        @map("project_id")
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  backlogItemId String?   @map("backlog_item_id")
+  backlogItem   BacklogItem? @relation(fields: [backlogItemId], references: [id], onDelete: SetNull)
+  title     String
+  messages  ChatMessage[]
+  agentRuns AgentRun[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@index([backlogItemId])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String      @map("session_id")
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String      @db.Text
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("chat_messages")
+}
+
+model BacklogItem {
+  id                String   @id @default(cuid())
+  projectId         String   @map("project_id")
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// Публичный ключ тикета вида PREFIX-123 (может быть NULL для старых записей)
+  ticketKey         String?  @unique @map("ticket_key")
+  /// Порядковый номер тикета внутри префикса проекта (сквозная нумерация)
+  ticketSeq         Int?     @map("ticket_seq")
+  title             String
+  description       String?  @db.Text
+  /// Статус задачи: new | in_progress | testing | done | rejected
+  status            String   @default("new")
+  priority          Int      @default(3)
+  orderNum          Int?     @map("order_num")
+  sprintNumber      Int      @default(0) @map("sprint_number")
+  /// forming | active | released | archived
+  sprintStatus      String   @default("forming") @map("sprint_status")
+  descriptionPrompt String   @default("") @map("description_prompt") @db.Text
+  taskType          String?  @map("task_type")
+  modules           String?
+  components        String?
+  complexity        Int?
+  promptModel       String?  @map("prompt_model")
+  promptCreatedAt   DateTime? @map("prompt_created_at")
+  promptDurationSec Int?     @map("prompt_duration_sec")
+  promptLogId       String?  @map("prompt_log_id")
+  promptAbout       String?  @map("prompt_about") @db.Text
+  docLink           String?  @map("doc_link")
+  testOrderOrLink   String?  @map("test_order_or_link") @db.Text
+  statusChangedAt   DateTime @default(now()) @map("status_changed_at")
+  /// Управление выполнением (парковка/продолжение)
+  isPaused          Boolean  @default(false) @map("is_paused")
+  pausedAt          DateTime? @map("paused_at")
+  sprintId          String?  @map("sprint_id")
+  sprint            Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  chats             ChatSession[]
+  agentRuns         AgentRun[]
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([projectId, sprintNumber])
+  @@index([projectId, taskType])
+  @@index([projectId, ticketSeq])
+  @@map("backlog_items")
+}
+
+model ProjectTicketCounter {
+  id        String  @id @default(cuid())
+  projectId String  @unique @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  nextSeq   Int     @default(1) @map("next_seq")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("project_ticket_counters")
+}
+
+model ProjectTestCaseCounter {
+  id        String  @id @default(cuid())
+  projectId String  @unique @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  nextSeq   Int     @default(1) @map("next_seq")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("project_test_case_counters")
+}
+
+model Sprint {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number    Int
+  status    String   @default("forming")
+  title     String   @default("")
+  items     BacklogItem[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@map("sprints")
+}
+
+model TestModule {
+  id          String     @id @default(cuid())
+  projectId   String     @map("project_id")
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?    @db.Text
+  active      Boolean    @default(true)
+  testCases   TestCase[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@unique([projectId, name])
+  @@map("test_modules")
+}
+
+model TestCase {
+  id              String     @id @default(cuid())
+  projectId       String     @map("project_id")
+  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// Публичный ключ тест-кейса вида PREFIX-T1 (может быть NULL для старых записей)
+  caseKey         String?    @unique @map("case_key")
+  /// Порядковый номер тест-кейса внутри проекта (отдельная нумерация)
+  caseSeq         Int?       @map("case_seq")
+  moduleId        String?    @map("module_id")
+  module          TestModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  title           String
+  description     String     @db.Text
+  kind            String     @default("manual-guided")
+  scope           String     @default("ui")
+  status          String     @default("draft")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([moduleId])
+  @@index([projectId, caseSeq])
+  @@map("test_cases")
+}
+
+model DeployEnvironment {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  branch      String   @default("main")
+  status      String   @default("stopped")
+  targetHost  String?  @map("target_host")
+  directory   String?  @map("directory")
+  isProd      Boolean  @default(false) @map("is_prod")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId, status])
+  @@unique([projectId, name])
+  @@map("deploy_environments")
+}
+
+/// Фоновый прогон агента (job/run) с событиями и шагами (чеклист как в Cursor)
+model AgentRun {
+  id            String   @id @default(cuid())
+  projectId     String   @map("project_id")
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  backlogItemId String?  @map("backlog_item_id")
+  backlogItem   BacklogItem? @relation(fields: [backlogItemId], references: [id], onDelete: SetNull)
+  sessionId     String?  @map("session_id")
+  session       ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  /// backlog_ticket_start | engineering_prompt | chat_message | ...
+  kind          String
+  status        String   @default("queued") // queued|running|waiting_user|done|failed|cancelled
+
+  title         String   @default("")
+  prompt        String   @default("") @db.Text
+  promptHash    String?  @map("prompt_hash")
+
+  userMessageId String?  @map("user_message_id")
+
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+
+  steps         AgentRunStep[]
+  events        AgentRunEvent[]
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([backlogItemId, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("agent_runs")
+}
+
+model AgentRunStep {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  index     Int
+  title     String
+  status    String   @default("pending") // pending|running|done|blocked|failed|cancelled
+
+  startedAt DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  @@unique([runId, index])
+  @@index([runId, status])
+  @@map("agent_run_steps")
+}
+
+model AgentRunEvent {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  seq       Int
+  type      String
+  message   String   @default("") @db.Text
+  data      Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([runId, seq])
+  @@index([runId, createdAt])
+  @@map("agent_run_events")
+}

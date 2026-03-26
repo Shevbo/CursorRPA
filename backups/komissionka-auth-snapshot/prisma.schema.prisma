@@ -1,0 +1,312 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+model users {
+  id                 String       @id @default(uuid()) @db.Uuid
+  email              String?      @unique @db.VarChar(255)
+  encrypted_password String?      @db.VarChar(255)
+  email_confirmed_at DateTime?    @db.Timestamptz(6)
+  is_sso_user        Boolean      @default(false)
+  profiles           profiles?
+  items              items[]      @relation("SellerItems")
+  messages           messages[]
+  cart_items         cart_items[]
+  user_activity      user_activity[]
+}
+
+model profiles {
+  id                         String    @id @default(uuid()) @db.Uuid
+  user_id                    String?   @unique @db.Uuid
+  full_name                  String?   @db.VarChar(255)
+  avatar_url                 String?   @db.VarChar(255)
+  email                      String    @unique @db.VarChar(255)
+  role                       String    @default("user") @db.VarChar(50)
+  telegram_id                String?   @unique @db.VarChar(64)
+  telegram_username          String?   @db.VarChar(255)
+  created_at                 DateTime? @default(now()) @db.Timestamptz(6)
+  last_active_at             DateTime? @db.Timestamptz(6)
+  phone                      String?   @db.VarChar(32)
+  preferred_location         String?   @db.VarChar(255)
+  email_notifications_enabled Boolean? @default(true)
+  users                      users     @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  telegram_bind_codes        telegram_bind_code[]
+}
+
+model telegram_bind_code {
+  code       String   @id @db.VarChar(32)
+  profile_id String   @db.Uuid
+  expires_at DateTime @db.Timestamptz(6)
+  profiles   profiles @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+}
+
+model items {
+  id          String    @id @default(uuid()) @db.Uuid
+  seller_id   String    @db.Uuid
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  price       Decimal   @db.Decimal(10, 2)
+  location    String?   @db.VarChar(255)
+  image_url   String?   @db.VarChar(255)
+  image_urls  String[]
+  status      String    @default("available") @db.VarChar(50)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  is_auction  Boolean?  @default(false)
+  sale_price  Decimal?  @db.Decimal(10, 2)
+  messages    messages[]
+  cart_items  cart_items[]
+  users       users     @relation("SellerItems", fields: [seller_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model messages {
+  id          String    @id @default(uuid()) @db.Uuid
+  item_id     String    @db.Uuid
+  sender_id   String    @db.Uuid
+  author_name String?   @db.VarChar(255)
+  content     String    @db.Text
+  attachments Json?     @default("[]") @db.JsonB
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  items       items     @relation(fields: [item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users       users     @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model cart_items {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String?   @db.Uuid
+  product_id String?   @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  items      items?    @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, product_id], map: "cart_items_user_id_product_id_key")
+}
+
+model user_activity {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String?   @db.Uuid
+  action_type String    @db.VarChar(255)
+  details    Json?
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  page_url   String?   @db.VarChar(255)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model site_settings {
+  id                  String   @id @default("main") @db.VarChar(255)
+  key                 String   @unique @db.VarChar(255)
+  hero_title          String?  @db.VarChar(255)
+  hero_subtitle       String?  @db.VarChar(255)
+  hero_image_url      String?  @db.VarChar(255)
+  h_banner            Int?     @db.SmallInt
+  news_banner_height  Int?     @db.SmallInt
+  news_scroll_speed   Int?     @db.SmallInt
+  catalog_min_columns Int?     @db.SmallInt
+  catalog_max_card_width Int?  @db.SmallInt
+  catalog_gap_px       Int?     @db.SmallInt
+  catalog_card_padding_px Int? @db.SmallInt
+  catalog_title_font_px Int?   @db.SmallInt
+  catalog_text_font_px  Int?   @db.SmallInt
+  agent_llm_model     String?  @db.VarChar(255)
+  agent_mode          String?  @db.VarChar(50)
+}
+
+model news {
+  id         String    @id @default(uuid()) @db.Uuid
+  title      String?   @db.VarChar(255)
+  body       String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  is_published Boolean? @default(true)
+}
+
+model testimonials {
+  id          String    @id @default(uuid()) @db.Uuid
+  author_name String?   @db.VarChar(255)
+  text        String?   @db.Text
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  rating      Int?      @map("rating") @db.SmallInt
+}
+
+// Кэш промптов и ответов агента (для экономии токенов, поиска похожих запросов)
+model agent_prompt_cache {
+  id                String   @id @default(uuid()) @db.Uuid
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  user_account      String?  @db.VarChar(255)
+  llm_model         String?  @db.VarChar(255)
+  history_turns     Int      @default(0) @db.SmallInt
+  project           String   @db.VarChar(128)
+  environment       String   @db.VarChar(64)
+  mode              String   @db.VarChar(16)
+  chat_name         String?  @db.VarChar(255)
+  topic             String?  @db.VarChar(128)
+  prompt            String   @db.Text
+  response          String   @db.Text
+  file_links        String[] @default([])
+  words_sent        Int      @default(0) @db.Integer
+  words_received    Int      @default(0) @db.Integer
+  prompt_hash       String?  @db.VarChar(64)
+  system_prompt_len Int      @default(0) @db.Integer
+
+  @@index([project, user_account, mode, llm_model])
+  @@index([prompt_hash])
+  @@index([topic])
+  @@index([created_at])
+}
+
+// Бэклог хотелок администратора и их статусы (дублируется в docs/backlog.md)
+model backlog {
+  id                   String   @id @default(uuid()) @db.Uuid
+  order_num            Int?     @db.Integer
+  sprint_number        Int      @db.Integer
+  sprint_status        String   @db.VarChar(64)
+  short_description    String   @db.VarChar(1024)
+  description_prompt   String   @db.Text
+  task_status          String   @db.VarChar(64)
+  // Классификаторы задачи и метаданные сгенерированного промпта
+  task_type            String?  @db.VarChar(32)
+  modules              String?  @db.VarChar(64)
+  components           String?  @db.VarChar(128)
+  complexity           Int?     @db.SmallInt
+  prompt_model         String?  @db.VarChar(255)
+  prompt_created_at    DateTime? @db.Timestamptz(6)
+  prompt_duration_sec  Int?     @db.Integer
+  prompt_log_id        String?  @db.VarChar(128)
+  /** Преамбула и подвал о промпте (модель, дата и т.д.). Не передаётся в Cursor/ИИ при исполнении. */
+  prompt_about         String?  @db.Text
+  doc_link             String?  @db.VarChar(1024)
+  test_order_or_link   String?  @db.Text
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  status_changed_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([sprint_number])
+  @@index([task_status])
+}
+
+// Среды деплоя (prod, test1, test2, ...)
+model deploy_environments {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(32)
+  port_app    Int      @db.Integer
+  port_agent  Int      @db.Integer
+  port_bot    Int      @db.Integer
+  directory   String   @db.VarChar(255)
+  db_name     String   @db.VarChar(64)
+  branch      String   @default("main") @db.VarChar(128)
+  status      String   @default("stopped") @db.VarChar(32)
+  is_prod     Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  queue_items deploy_queue[]
+  log_entries deploy_log[]
+
+  @@index([status])
+}
+
+// Очередь операций деплоя
+model deploy_queue {
+  id              String    @id @default(uuid()) @db.Uuid
+  environment_id  String    @db.Uuid
+  operation       String    @db.VarChar(32)
+  source_env_id   String?   @db.Uuid
+  branch          String?   @db.VarChar(128)
+  status          String    @default("pending") @db.VarChar(32)
+  requested_by    String?   @db.VarChar(255)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  started_at      DateTime? @db.Timestamptz(6)
+  completed_at    DateTime? @db.Timestamptz(6)
+
+  environment     deploy_environments @relation(fields: [environment_id], references: [id], onDelete: Cascade)
+  log_entries     deploy_log[]
+
+  @@index([status])
+  @@index([created_at])
+}
+
+// Журнал операций деплоя (очередь + прямые запуски скриптов)
+model deploy_log {
+  id              String   @id @default(uuid()) @db.Uuid
+  queue_id        String?  @db.Uuid
+  environment_id  String?  @db.Uuid
+  operation       String   @db.VarChar(32)
+  status          String   @db.VarChar(32)
+  output          String?  @db.Text
+  error           String?  @db.Text
+  duration_ms     Int?     @db.Integer
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  // Источник: queue (worker по очереди) или script (прямой запуск deploy-from-git.sh / env-deploy.sh)
+  source          String?  @db.VarChar(32)
+  // Кто инициировал: admin-ui, deploy-hoster-git.ps1, cursor, agent, deploy-from-git.sh и т.д.
+  requested_by    String?  @db.VarChar(255)
+
+  queue           deploy_queue? @relation(fields: [queue_id], references: [id], onDelete: SetNull)
+  environment     deploy_environments? @relation(fields: [environment_id], references: [id], onDelete: SetNull)
+
+  @@index([environment_id])
+  @@index([created_at])
+}
+
+// Универсальный каталог тест‑кейсов проекта (см. docs/manual/test-catalog-architecture.md)
+model test_modules {
+  id          String   @id @db.VarChar(64) // app, agent, tgbot, pwa, deploy-worker и т.п.
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  active      Boolean  @default(true)
+
+  test_cases  test_cases[]
+}
+
+model test_cases {
+  id                  String        @id @default(uuid()) @db.Uuid
+  number              Int           @unique @db.Integer
+  module_id           String        @db.VarChar(64)
+  title               String        @db.VarChar(255)
+  description         String        @db.Text
+  kind                String        @db.VarChar(32) // manual-guided, semi-automatic, automatic
+  scope               String        @db.VarChar(32) // ui, api, agent, telegram, db, infra
+  prompt_template     String?       @db.Text
+  parameters          Json?         @db.JsonB
+  expected_result     Json?         @db.JsonB
+  tags                String[]      @default([])
+  enabled             Boolean       @default(true)
+  ui_pages            String[]      @default([]) // связанные страницы UI
+  api_endpoints       String[]      @default([]) // маршруты /api/*
+  code_refs           String[]      @default([]) // пути к файлам/функциям
+  db_entities         String[]      @default([]) // модели Prisma
+  spec_enriched_by_ai Boolean       @default(false)
+  spec_enriched_at    DateTime?     @db.Timestamptz(6)
+  spec_enriched_model String?       @db.VarChar(255)
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime      @default(now()) @updatedAt @db.Timestamptz(6)
+
+  module              test_modules  @relation(fields: [module_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  runs                test_runs[]
+}
+
+model test_runs {
+  id                String      @id @default(uuid()) @db.Uuid
+  test_case_id      String      @db.Uuid
+  run_number        Int         @db.Integer
+  started_at        DateTime    @default(now()) @db.Timestamptz(6)
+  finished_at       DateTime?   @db.Timestamptz(6)
+  status            String      @db.VarChar(32) // pending, running, success, failed, error
+  runner            String?     @db.VarChar(64) // admin-ui, chat-command, cron, api
+  request_context   Json?       @db.JsonB
+  agent_log_id      String?     @db.VarChar(255)
+  status_dump_path  String?     @db.VarChar(1024)
+  conversation_log  Json?       @db.JsonB
+  steps             Json?       @db.JsonB
+  comparison_result Json?       @db.JsonB
+  diagnostics       Json?       @db.JsonB
+
+  test_case         test_cases  @relation(fields: [test_case_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([test_case_id])
+  @@index([status])
+  @@index([started_at])
+}

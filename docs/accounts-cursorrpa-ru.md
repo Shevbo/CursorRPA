@@ -8,9 +8,9 @@
 
 - Пользователь **`cursorrpa`** (uid 1001), домашний каталог `/home/cursorrpa`.
 - Каталог **`/home/cursorrpa/workspaces`** для репозиториев/артефактов.
-- В **`~/.ssh/authorized_keys`** скопирован тот же ключ, что у **`ubuntu`** (вход с вашего ПК тем же `id_ed25519`).
+- В **`~/.ssh/authorized_keys`** скопирован тот же ключ, что у **`ubuntu`** (вход тем же `id_ed25519`).
 
-**SSH с Windows (в `~/.ssh/config` уже есть алиас `hoster-cursorrpa`):**
+**SSH (в `~/.ssh/config` уже есть алиас `hoster-cursorrpa`):**
 
 ```bash
 ssh hoster-cursorrpa
@@ -51,7 +51,7 @@ sudo chmod 600 /home/cursorrpa/.ssh/authorized_keys
 sudo chown -R cursorrpa:cursorrpa /home/cursorrpa
 ```
 
-Проверка с ПК:
+Проверка доступа:
 
 ```bash
 ssh dev-rpa-cursorrpa

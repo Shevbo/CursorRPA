@@ -1,4 +1,7 @@
 .env
+shectory-portal/tmp/agent-runs/*.pid
+node_modules/
+services/telegram-bridge/project-envs/cursor-rpa.env
 apikey.txt
 **/.venv/
 **/__pycache__/
