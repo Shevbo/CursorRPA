@@ -27,8 +27,14 @@ function readCardMeta(meta: unknown): CardMeta {
   };
 }
 
-export function ProjectCardAdminDialog({ projects }: { projects: Item[] }) {
-  const [open, setOpen] = useState(false);
+export function ProjectCardAdminDialog({
+  projects,
+  autoOpen,
+}: {
+  projects: Item[];
+  autoOpen: boolean;
+}) {
+  const [open, setOpen] = useState(autoOpen);
   const [idx, setIdx] = useState(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -41,12 +47,6 @@ export function ProjectCardAdminDialog({ projects }: { projects: Item[] }) {
 
   const cur = projects[idx];
   const currentMeta = useMemo(() => readCardMeta(cur?.registryMetaJson), [cur?.registryMetaJson]);
-
-  useEffect(() => {
-    if (!projects.length) return;
-    setOpen(true);
-    setIdx(0);
-  }, [projects.length]);
 
   useEffect(() => {
     if (!cur) return;
@@ -121,7 +121,7 @@ export function ProjectCardAdminDialog({ projects }: { projects: Item[] }) {
             {idx + 1}/{projects.length}
           </div>
         </div>
-        <p className="mb-4 text-sm text-slate-400">При входе админа требуется актуализировать метаданные карточек.</p>
+        <p className="mb-4 text-sm text-slate-400">Актуализируйте метаданные карточек проектов.</p>
 
         <div className="space-y-3">
           <label className="block text-sm text-slate-300">

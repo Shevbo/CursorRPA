@@ -8,8 +8,13 @@ import { ProjectCardAdminDialog } from "@/components/ProjectCardAdminDialog";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams?: { editCards?: string };
+}) {
   const canEditDescriptions = adminSessionOk();
+  const showCardDialog = canEditDescriptions && searchParams?.editCards === "1";
 
   const [projects, categories] = await Promise.all([
     prisma.project.findMany({
@@ -34,6 +39,14 @@ export default async function ProjectsPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {canEditDescriptions && (
+            <Link
+              href="/projects?editCards=1"
+              className="rounded-lg border border-amber-700/70 bg-amber-900/20 px-3 py-1.5 text-sm text-amber-200 hover:bg-amber-900/40"
+            >
+              Обновить карточки
+            </Link>
+          )}
           <CreateProjectButton canCreate={canEditDescriptions} />
           <LogoutButton />
         </div>
@@ -178,6 +191,7 @@ export default async function ProjectsPage() {
       </section>
       {canEditDescriptions && (
         <ProjectCardAdminDialog
+          autoOpen={showCardDialog}
           projects={projects.map((p) => ({
             slug: p.slug,
             name: p.name,
