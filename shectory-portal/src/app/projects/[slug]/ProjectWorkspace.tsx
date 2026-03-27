@@ -52,10 +52,25 @@ export function ProjectWorkspace({
   const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
   const [botToken, setBotToken] = useState("");
   const [botAllowedIds, setBotAllowedIds] = useState("");
+  const [cmdInput, setCmdInput] = useState("");
+  const [cmdRunning, setCmdRunning] = useState(false);
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId),
     [sessions, activeId]
   );
+
+  const proposedCmds = useMemo(() => {
+    const lastAssistant = [...(active?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+    const text = String(lastAssistant?.content ?? "");
+    const out: string[] = [];
+    const re = /<<<SHELL_COMMAND>>>([\s\S]*?)<<<\/SHELL_COMMAND>>>/g;
+    let m: RegExpExecArray | null = null;
+    while ((m = re.exec(text))) {
+      const cmd = (m[1] ?? "").trim();
+      if (cmd) out.push(cmd);
+    }
+    return out;
+  }, [active?.messages]);
 
   const loadTree = useCallback(async () => {
     const r = await fetch(`/api/workspace/tree?projectId=${projectId}`, {
@@ -145,6 +160,49 @@ export function ProjectWorkspace({
     }
   };
 
+  const execCommand = async (command: string) => {
+    if (!activeId || !command.trim()) return;
+    if (!confirm(`Выполнить команду на сервере?\n\n${command.trim()}`)) return;
+    setCmdRunning(true);
+    try {
+      const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(activeId)}/exec`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: command.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+      const fresh = await fetchChatSession(activeId);
+      if (fresh) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeId
+              ? {
+                  ...s,
+                  messages: fresh.messages.map(
+                    (msg) =>
+                      ({
+                        id: msg.id,
+                        role: msg.role,
+                        content: msg.content,
+                        createdAt: new Date(msg.createdAt),
+                        sessionId: activeId,
+                      }) as ChatMessage
+                  ),
+                }
+              : s
+          )
+        );
+      }
+      setCmdInput("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCmdRunning(false);
+    }
+  };
+
   return (
     <div className="flex min-h-[420px] flex-col gap-4">
       <div className="flex gap-2 border-b border-slate-800 pb-2">
@@ -214,6 +272,44 @@ export function ProjectWorkspace({
                 </div>
               ))}
             </div>
+            {(proposedCmds.length > 0 || cmdInput.trim()) && (
+              <div className="border-t border-slate-800 bg-amber-950/20 p-3 text-sm">
+                <div className="mb-2 text-xs text-amber-200/80">
+                  Агент предложил терминальные команды. Выполнение только после вашего подтверждения.
+                </div>
+                <div className="space-y-2">
+                  {proposedCmds.map((cmd, i) => (
+                    <div key={`${cmd}-${i}`} className="rounded border border-amber-900/50 bg-black/30 p-2">
+                      <pre className="whitespace-pre-wrap text-xs text-amber-100">{cmd}</pre>
+                      <button
+                        type="button"
+                        className="mt-2 rounded bg-amber-600 px-3 py-1 text-xs text-white disabled:opacity-60"
+                        disabled={cmdRunning}
+                        onClick={() => void execCommand(cmd)}
+                      >
+                        {cmdRunning ? "..." : "Выполнить"}
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                      placeholder="Или введите команду вручную…"
+                      value={cmdInput}
+                      onChange={(e) => setCmdInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="rounded bg-amber-600 px-3 py-2 text-sm text-white disabled:opacity-60"
+                      disabled={cmdRunning || !cmdInput.trim()}
+                      onClick={() => void execCommand(cmdInput)}
+                    >
+                      {cmdRunning ? "..." : "Выполнить"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex gap-2 border-t border-slate-800 p-2">
               <input
                 className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
