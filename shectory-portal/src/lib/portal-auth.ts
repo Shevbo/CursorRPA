@@ -7,6 +7,7 @@ const LEGACY_COOKIE = "shectory_admin";
 const DEFAULT_ADMIN_EMAIL = "bshevelev@mail.ru";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const CODE_TTL_MINUTES = 15;
+let cachedSecret: string | null = null;
 
 type SessionPayload = {
   email: string;
@@ -19,7 +20,21 @@ function normalizeEmail(email: string): string {
 }
 
 function authSecret(): string | undefined {
-  return process.env.AUTH_SESSION_SECRET?.trim() || process.env.ADMIN_TOKEN?.trim() || undefined;
+  if (cachedSecret) return cachedSecret;
+  const explicit =
+    process.env.AUTH_SESSION_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    process.env.ADMIN_TOKEN?.trim() ||
+    "";
+  if (explicit) {
+    cachedSecret = explicit;
+    return cachedSecret;
+  }
+  // Fallback key to avoid broken login when env secret was not configured yet.
+  // Deterministic per installation, but admins should still set AUTH_SESSION_SECRET explicitly.
+  const base = `${process.env.DATABASE_URL || "db"}|${process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL}|shectory-auth`;
+  cachedSecret = createHmac("sha256", "shectory-fallback-secret").update(base).digest("hex");
+  return cachedSecret;
 }
 
 function hashPassword(password: string): string {
