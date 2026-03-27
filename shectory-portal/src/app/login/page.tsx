@@ -107,8 +107,12 @@ export default function LoginPage() {
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-4 py-8">
       <header className="mb-4 flex items-start justify-between gap-3">
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-          SHECTORY
+        <div>
+          <img
+            src="/brand/shectory-logo.gif"
+            alt="Shectory"
+            className="h-15 w-auto"
+          />
         </div>
         <div className="text-right">
           <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-white">PORTAL</div>

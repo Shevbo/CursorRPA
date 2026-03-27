@@ -30,8 +30,12 @@ export default async function ProjectsPage({
     <main className="mx-auto max-w-7xl px-4 py-6">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl border border-slate-800 bg-slate-900/50 text-base font-semibold text-white">
-            S
+          <div>
+            <img
+              src="/brand/shectory-logo.gif"
+              alt="Shectory"
+              className="h-14 w-auto"
+            />
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-white">Shectory</h1>
