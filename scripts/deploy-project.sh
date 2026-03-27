@@ -51,7 +51,7 @@ commit_push_on_work() {
   fi
 
   # Коммитим только если есть изменения. Если репо не git — не падаем (portable проекты).
-  ssh -o BatchMode=yes "${SSH_WORK}" "bash -lc '
+  if ! ssh -o BatchMode=yes "${SSH_WORK}" "bash --noprofile --norc -lc '
 set -euo pipefail
 cd \"$ws\" 2>/dev/null || { echo \"workspace missing: $ws\"; exit 3; }
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -66,7 +66,9 @@ fi
 git add -A
 git -c user.name=\"${GIT_USER_NAME//\"/\\\"}\" -c user.email=\"${GIT_USER_EMAIL//\"/\\\"}\" commit -m \"${COMMIT_MSG//\"/\\\"}\" || true
 git push
-'"
+'"; then
+    echo "warn: git commit/push step failed on ${SSH_WORK} for ${slug}; continuing to deploy"
+  fi
 }
 
 deploy_cursorrpa_hoster() {
@@ -110,7 +112,7 @@ exit 5
 }
 
 deploy_piranha_ai_hoster() {
-  ssh -o BatchMode=yes "${SSH_HOSTER}" "bash -lc '
+  ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc '
 set -euo pipefail
 cd \"\$HOME/piranha-ai\"
 if [[ -f \"${PROXY_ENV_PATH}\" ]]; then
@@ -125,7 +127,7 @@ fi
 deploy_generic_hoster_by_script() {
   local slug="$1"
   # Попытка универсально: на hoster найти каталог и запустить scripts/deploy.sh (если есть).
-  ssh -o BatchMode=yes "${SSH_HOSTER}" "bash -lc '
+  ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc '
 set -euo pipefail
 candidates=(\"\$HOME/${slug}\" \"\$HOME/${slug}-prod\" \"\$HOME/${slug}-app\" \"\$HOME/${slug//-/_}\" )
 target=\"\"
@@ -160,6 +162,10 @@ case "${PROJECT_SLUG}:${ENV_NAME}" in
   piranha-ai:hoster)
     commit_push_on_work "piranha-ai"
     deploy_piranha_ai_hoster
+    ;;
+  pingmaster:hoster)
+    commit_push_on_work "pingmaster"
+    ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc 'set -euo pipefail; cd \"\$HOME/pingmaster\"; ./scripts/deploy.sh'"
     ;;
   *:hoster)
     commit_push_on_work "${PROJECT_SLUG}"

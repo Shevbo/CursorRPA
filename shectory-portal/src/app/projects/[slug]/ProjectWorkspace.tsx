@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChatMessage, ChatSession } from "@prisma/client";
 import { BacklogPanel } from "@/components/BacklogPanel";
 import { fetchChatSession, waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
@@ -25,6 +25,11 @@ type BotStatus = {
   activeState: string;
   enabledState: string;
   lastError?: string;
+};
+type WelcomeStatus = {
+  artifacts?: { shectoryLogo?: string; projectLogo?: string; mainFrameBrief?: string };
+  missing?: string[];
+  user?: { email?: string; role?: string } | null;
 };
 
 export function ProjectWorkspace({
@@ -54,6 +59,12 @@ export function ProjectWorkspace({
   const [botAllowedIds, setBotAllowedIds] = useState("");
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [welcomeLoading, setWelcomeLoading] = useState(false);
+  const [welcomeErr, setWelcomeErr] = useState("");
+  const [shectoryLogo, setShectoryLogo] = useState("");
+  const [projectLogo, setProjectLogo] = useState("");
+  const [mainFrameBrief, setMainFrameBrief] = useState("");
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId),
     [sessions, activeId]
@@ -200,6 +211,55 @@ export function ProjectWorkspace({
       alert(e instanceof Error ? e.message : String(e));
     } finally {
       setCmdRunning(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/welcome-artifacts`, {
+          credentials: "include",
+        });
+        if (!r.ok) return;
+        const j = (await r.json()) as WelcomeStatus;
+        if (cancelled) return;
+        const email = String(j.user?.email ?? "").toLowerCase();
+        const mustOpen = email === "bshevelev@mail.ru" && Array.isArray(j.missing) && j.missing.length > 0;
+        setShectoryLogo(String(j.artifacts?.shectoryLogo ?? ""));
+        setProjectLogo(String(j.artifacts?.projectLogo ?? ""));
+        setMainFrameBrief(String(j.artifacts?.mainFrameBrief ?? ""));
+        setWelcomeOpen(mustOpen);
+      } catch {
+        // silent
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectSlug]);
+
+  const saveWelcomeArtifacts = async () => {
+    setWelcomeLoading(true);
+    setWelcomeErr("");
+    try {
+      const r = await fetch(`/api/projects/${encodeURIComponent(projectSlug)}/welcome-artifacts`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shectoryLogo: shectoryLogo.trim(),
+          projectLogo: projectLogo.trim(),
+          mainFrameBrief: mainFrameBrief.trim(),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? "Не удалось сохранить");
+      setWelcomeOpen(false);
+    } catch (e) {
+      setWelcomeErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWelcomeLoading(false);
     }
   };
 
@@ -555,6 +615,56 @@ export function ProjectWorkspace({
           <pre className="mt-2 text-green-400">ssh shectory-work</pre>
           <p className="mt-2 text-slate-500">Рабочий каталог проекта:</p>
           <pre className="text-slate-200">{workspacePath}</pre>
+        </div>
+      )}
+      {welcomeOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-950 p-5">
+            <h3 className="text-lg font-semibold text-white">Сбор артефактов welcome-экрана</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Для стандарта Shectory заполните 3 обязательных пункта перед дальнейшей работой в проекте.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm text-slate-300">
+                1) Лого Shectory (URL/путь/описание)
+                <input
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                  value={shectoryLogo}
+                  onChange={(e) => setShectoryLogo(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm text-slate-300">
+                2) Лого проекта (URL/путь/описание)
+                <input
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                  value={projectLogo}
+                  onChange={(e) => setProjectLogo(e.target.value)}
+                />
+              </label>
+              <label className="block text-sm text-slate-300">
+                3) Что должно быть в основном фрейме welcome-экрана
+                <textarea
+                  className="mt-1 min-h-28 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                  value={mainFrameBrief}
+                  onChange={(e) => setMainFrameBrief(e.target.value)}
+                />
+              </label>
+              {welcomeErr && <div className="text-sm text-red-400">{welcomeErr}</div>}
+              <button
+                type="button"
+                disabled={
+                  welcomeLoading ||
+                  !shectoryLogo.trim() ||
+                  !projectLogo.trim() ||
+                  !mainFrameBrief.trim()
+                }
+                onClick={() => void saveWelcomeArtifacts()}
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {welcomeLoading ? "Сохраняю..." : "Сохранить и продолжить"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

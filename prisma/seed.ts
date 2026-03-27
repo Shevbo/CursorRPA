@@ -117,7 +117,7 @@ async function main() {
       repoUrl: null,
       stack: ["Android"],
       notes:
-        "На shectory-work каталог /home/shectory/workspaces/PingMaster отсутствует; путь/remote требуют фикса в инфраструктуре.",
+        "Workspace существует и приведён к базовому стандарту Shectory (README/RUNBOOK/ARCHITECTURE/deploy.sh). Требуется настройка remote и прод-инфраструктуры.",
       hosterRole: "нет prod на Hoster (requirements)",
     },
   ] as const;
@@ -131,6 +131,11 @@ async function main() {
       "- Унифицированная команда деплоя (из монолита CursorRPA):",
       `  /home/shectory/workspaces/CursorRPA/scripts/deploy-project.sh ${p.slug} hoster`,
       "- Если команда для проекта не поддержана — допишите deploy-скрипт проекта и зафиксируйте команды в RUNBOOK.md.",
+      "",
+      "Фирменный стандарт welcome/login страницы (обязательно):",
+      "- Документ: /home/shectory/workspaces/CursorRPA/docs/welcome-page-standard-ru.md",
+      "- Шаблон: /home/shectory/workspaces/CursorRPA/templates/shectory-welcome-frame/",
+      "- Структура: большой инфо-фрейм + единая login-область + логотипы (Shectory слева сверху, проект справа сверху) + версии модулей.",
       "",
       "Унифицированная аутентификация/пользователи/доступы (вынесено из komissionka):",
       "- Документация: /home/shectory/workspaces/CursorRPA/docs/unified-auth-users-rbac-ru.md",

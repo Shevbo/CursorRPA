@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { clearSessionCookie } from "@/lib/portal-auth";
 
 export async function POST() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("shectory_admin", "", { httpOnly: true, path: "/", maxAge: 0 });
+  clearSessionCookie(res);
   return res;
 }

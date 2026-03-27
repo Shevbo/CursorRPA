@@ -45,7 +45,7 @@ flowchart TB
 | cursor-rpa  | CursorRPA (монолит) | dev + portal prod | `https://shectory.ru` (UI) | `/home/shectory/workspaces/CursorRPA`   | `https://github.com/Shevbo/CursorRPA.git`                                               | ok (`git ls-remote`)       | Web UI портала на VDS             | docs, scripts, Next.js в `shectory-portal/`, Python bridge | Один репозиторий: доки, скрипты, **Shectory Portal** (`shectory-portal/`), **Telegram bridge**. Публичный UI: `shectory.ru`. Unit: `shectory-portal.service`. |
 | komissionka | Комиссионка      | dev / prod split | `https://komissionka92.ru` | `/home/shectory/workspaces/komissionka` | `https://github.com/Shevbo/komissionka-app.git`                                         | ok (`git ls-remote`)       | prod DB/UI/API на Hoster          | Prisma, Postgres, web  | Прод URL: `https://komissionka92.ru`.                                                                                           |
 | piranha-ai  | PiranhaAI        | dev              | `-`                        | `/home/shectory/workspaces/PiranhaAI`   | *нет `.git` в корне проекта (portable)*                                                 | n/a                        | по продукту                       | .NET / native          | Проект в portable-режиме, remote в корне не зафиксирован.                                                                       |
-| pingmaster  | PingMaster       | requirements     | `-`                        | `/home/shectory/workspaces/PingMaster`  | не подтверждено                                                                           | fail (repo/path unknown)   | нет prod на Hoster (requirements) | Android                | На `shectory-work` каталог `/home/shectory/workspaces/PingMaster` отсутствует; путь/remote требуют фикса в инфраструктуре.     |
+| pingmaster  | PingMaster       | requirements     | `-`                        | `/home/shectory/workspaces/PingMaster`  | локальный git инициализирован (remote не настроен)                                      | partial                    | нет prod на Hoster (requirements) | Android                | Workspace приведён к базовому стандарту (README, RUNBOOK, ARCHITECTURE, scripts/deploy.sh). Нужны remote и прод-инфра.      |
 
 
 ---
@@ -58,6 +58,7 @@ flowchart TB
 | `/home/shectory/workspaces/CursorRPA`    | git-клон монолита: docs, scripts, `shectory-portal/`, `services/telegram-bridge/` | репозиторий **CursorRPA**; Web UI — подкаталог `shectory-portal/` |
 | `/home/shectory/workspaces/komissionka`  | git-клон продукта komissionka                   | рабочая копия проекта komissionka                |
 | `/home/shectory/workspaces/PiranhaAI`    | проект в portable-режиме                         | рабочая копия проекта PiranhaAI                  |
+| `/home/shectory/workspaces/PingMaster`   | базовый bootstrap по стандарту Shectory          | рабочая копия проекта PingMaster                 |
 
 
 ---

@@ -1,0 +1,108 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --panel: #121a2b;
+  --muted: #8fa3c6;
+  --line: #223252;
+  --text: #e8efff;
+  --accent: #4f8cff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #16223c 0%, var(--bg) 55%);
+  color: var(--text);
+  font: 14px/1.45 Inter, Arial, sans-serif;
+}
+
+.welcome-root {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.welcome-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.logo {
+  border: 1px solid var(--line);
+  background: #0f182a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.project-meta {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.versions {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.welcome-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+
+.info-frame,
+.login-frame {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 18px;
+}
+
+.info-frame {
+  min-height: 68vh;
+}
+
+.login-frame form {
+  display: grid;
+  gap: 10px;
+}
+
+.login-frame input {
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1525;
+  color: var(--text);
+  padding: 10px;
+}
+
+.login-frame button {
+  margin-top: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help {
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+@media (max-width: 960px) {
+  .welcome-content {
+    grid-template-columns: 1fr;
+  }
+}
+

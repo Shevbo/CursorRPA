@@ -68,6 +68,15 @@ const UNIVERSAL_DEPLOY_BLOCK = [
   "- Унифицированная команда (из монолита CursorRPA):",
   "  /home/shectory/workspaces/CursorRPA/scripts/deploy-project.sh <project-slug> hoster",
   "- Если деплой для проекта не настроен: зафиксируйте команды в RUNBOOK.md и/или добавьте scripts/deploy.sh.",
+  "",
+  "Унифицированный welcome/login экран (обязательный фирменный стандарт):",
+  "- Документ: /home/shectory/workspaces/CursorRPA/docs/welcome-page-standard-ru.md",
+  "- Шаблон: /home/shectory/workspaces/CursorRPA/templates/shectory-welcome-frame/",
+  "- Композиция: левый верхний logo Shectory, правый верхний logo проекта + версии, единая область логина, большой инфо-фрейм.",
+  "",
+  "Единый каталог пользователей и RBAC:",
+  "- Документ: /home/shectory/workspaces/CursorRPA/docs/unified-auth-users-rbac-ru.md",
+  "- Минимальные роли: user/admin. Управление ролями только у admin.",
 ].join("\n");
 
 function workspaceRoot(): string {
