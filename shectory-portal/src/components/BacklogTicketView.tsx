@@ -82,10 +82,35 @@ export function BacklogTicketView({
 
   const runProgress = useMemo(() => {
     const steps = run?.steps ?? [];
-    const done = steps.filter((s) => s.status === "done").length;
+    const doneByDb = steps.filter((s) => s.status === "done").length;
+    // Fallback: if DB step statuses lag behind, derive progress from chat headings.
+    const doneByChat = (() => {
+      const msgs = session?.messages ?? [];
+      let max = 0;
+      for (const m of msgs) {
+        if (m.role !== "assistant") continue;
+        const hit = (m.content ?? "").match(/^###\s*Шаг\s+(\d+)\/(\d+)/im);
+        if (!hit) continue;
+        const n = Number(hit[1]);
+        const t = Number(hit[2]);
+        if (Number.isFinite(n) && Number.isFinite(t) && t > 0) {
+          max = Math.max(max, n);
+        }
+      }
+      return max;
+    })();
     const total = steps.length || 0;
-    return { done, total };
-  }, [run?.steps]);
+    return { done: Math.min(total, Math.max(doneByDb, doneByChat)), total };
+  }, [run?.steps, session?.messages]);
+
+  const renderSteps = useMemo(() => {
+    const steps = run?.steps ?? [];
+    return steps.map((s, idx) => {
+      if (s.status === "done" || s.status === "failed" || s.status === "cancelled") return s;
+      if (runProgress.done > idx) return { ...s, status: "done" as const };
+      return s;
+    });
+  }, [run?.steps, runProgress.done]);
 
   const WAITING_CODE = "[***waiting for answer***]";
   const lastAssistantContent = useMemo(() => {
@@ -768,7 +793,7 @@ export function BacklogTicketView({
                   </span>
                 </div>
                 <div className="mt-2 space-y-1">
-                  {(run.steps ?? []).map((s) => (
+                  {renderSteps.map((s) => (
                     <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-black/10 px-2 py-1 text-xs">
                       <span className="text-slate-200">{s.title}</span>
                       <span
