@@ -4,6 +4,7 @@ import { adminSessionOk } from "@/lib/admin-auth";
 import { ProjectDescriptionEditor } from "@/components/ProjectDescriptionEditor";
 import { LogoutButton } from "@/components/LogoutButton";
 import { CreateProjectButton } from "@/components/CreateProjectButton";
+import { ProjectCardAdminDialog } from "@/components/ProjectCardAdminDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,15 @@ export default async function ProjectsPage() {
             >
               <Link href={`/projects/${p.slug}`} className="block outline-none">
                 <div className="text-xs text-slate-500">#{p.id.slice(0, 8)}</div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {(p.registryMetaJson as Record<string, unknown> | null)?.projectCard &&
+                  typeof (p.registryMetaJson as Record<string, unknown>).projectCard === "object"
+                    ? String(
+                        ((p.registryMetaJson as Record<string, unknown>).projectCard as Record<string, unknown>)
+                          .projectLogo ?? ""
+                      ).slice(0, 80) || "logo: -"
+                    : "logo: -"}
+                </div>
                 <h3 className="mt-1 text-lg font-semibold text-white group-hover:text-blue-400">
                   {p.name}
                 </h3>
@@ -143,11 +153,41 @@ export default async function ProjectsPage() {
                     runbook
                   </a>
                 )}
+                {(() => {
+                  const root = (p.registryMetaJson as Record<string, unknown> | null) ?? {};
+                  const card = (root.projectCard && typeof root.projectCard === "object"
+                    ? root.projectCard
+                    : {}) as Record<string, unknown>;
+                  const link = typeof card.generatedOverviewUrl === "string" ? card.generatedOverviewUrl : "";
+                  if (!link) return null;
+                  return (
+                    <a href={link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                      описательная часть
+                    </a>
+                  );
+                })()}
+                {p.uiUrl && (
+                  <a href={p.uiUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                    ui
+                  </a>
+                )}
               </div>
             </div>
           ))}
         </div>
       </section>
+      {canEditDescriptions && (
+        <ProjectCardAdminDialog
+          projects={projects.map((p) => ({
+            slug: p.slug,
+            name: p.name,
+            description: p.description ?? "",
+            uiUrl: p.uiUrl,
+            stage: p.stage,
+            registryMetaJson: p.registryMetaJson,
+          }))}
+        />
+      )}
     </main>
   );
 }

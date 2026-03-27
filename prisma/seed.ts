@@ -142,6 +142,9 @@ async function main() {
       "- Шаблон для Next.js+Prisma: /home/shectory/workspaces/CursorRPA/templates/shectory-auth-nextjs-prisma/",
       "- Глобальный superadmin: bshevelev@mail.ru.",
       "- В прикладных проектах запрещены автономные каталоги пользователей; использовать единый каталог Shectory и единый RBAC-контракт.",
+      "",
+      "Метаданные карточки проекта (поддерживать актуально):",
+      "- name/logo, описание 50-300 символов, ссылка на агентное описание проекта, UI-ссылка, статус dev|mvp|prod|archive.",
     ].join("\n");
     await prisma.project.upsert({
       where: { slug: p.slug },

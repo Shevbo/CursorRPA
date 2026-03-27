@@ -8,9 +8,11 @@ const MAX_MERMAID = 200_000;
 const MAX_URL = 2048;
 
 type PatchBody = {
+  name?: unknown;
   description?: unknown;
   architectureMermaid?: unknown;
   uiUrl?: unknown;
+  stage?: unknown;
   registryMetaJson?: unknown;
 };
 
@@ -28,11 +30,22 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
   }
 
   const data: {
+    name?: string;
     description?: string;
     architectureMermaid?: string;
     uiUrl?: string | null;
+    stage?: string;
     registryMetaJson?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
   } = {};
+
+  if (body.name !== undefined) {
+    if (typeof body.name !== "string") {
+      return NextResponse.json({ error: "name must be a string" }, { status: 400 });
+    }
+    const clean = body.name.trim();
+    if (!clean) return NextResponse.json({ error: "name cannot be empty" }, { status: 400 });
+    data.name = clean.slice(0, 120);
+  }
 
   if (body.description !== undefined) {
     if (typeof body.description !== "string") {
@@ -70,6 +83,18 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     }
   }
 
+  if (body.stage !== undefined) {
+    if (typeof body.stage !== "string") {
+      return NextResponse.json({ error: "stage must be a string" }, { status: 400 });
+    }
+    const allowed = new Set(["dev", "mvp", "prod", "archive"]);
+    const clean = body.stage.trim().toLowerCase();
+    if (!allowed.has(clean)) {
+      return NextResponse.json({ error: "stage must be one of: dev, mvp, prod, archive" }, { status: 400 });
+    }
+    data.stage = clean;
+  }
+
   if (body.registryMetaJson !== undefined) {
     // Intentionally flexible: validated at UI layer. Secrets запрещены организационно, не технически.
     // Ensure value is JSON-serializable (prisma expects InputJsonValue).
@@ -92,7 +117,7 @@ export async function PATCH(req: Request, { params }: { params: { slug: string }
     const updated = await prisma.project.update({
       where: { slug },
       data,
-      select: { id: true, slug: true, description: true, architectureMermaid: true, uiUrl: true, registryMetaJson: true },
+      select: { id: true, slug: true, name: true, stage: true, description: true, architectureMermaid: true, uiUrl: true, registryMetaJson: true },
     });
     return NextResponse.json({ ok: true, project: updated });
   } catch {
