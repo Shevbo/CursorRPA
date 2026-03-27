@@ -157,7 +157,7 @@ async function main() {
         stage: p.stage,
         status: "active",
         description: p.notes,
-        architectureMermaid: `flowchart LR\n  ${nodeId}[${label}]`,
+        architectureMermaid: `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
         aiContext: `Проект ${p.name}. Инфраструктурные метаданные и ссылки — в Project.registryMetaJson.\n\n${universalDeployContext}`,
         repoUrl: p.repoUrl,
         createdSource: "manual",
@@ -261,7 +261,7 @@ async function main() {
         uiUrl: p.uiUrl,
         stage: p.stage,
         repoUrl: p.repoUrl,
-        architectureMermaid: `flowchart LR\n  ${nodeId}[${label}]`,
+        architectureMermaid: `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
         aiContext: `Проект ${p.name}. Инфраструктурные метаданные и ссылки — в Project.registryMetaJson.\n\n${universalDeployContext}`,
         registryMetaJson: {
           shortId: p.slug,

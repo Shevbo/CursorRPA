@@ -5,6 +5,8 @@ import { ProjectDescriptionEditor } from "@/components/ProjectDescriptionEditor"
 import { LogoutButton } from "@/components/LogoutButton";
 import { CreateProjectButton } from "@/components/CreateProjectButton";
 import { ProjectCardAdminDialog } from "@/components/ProjectCardAdminDialog";
+import { ShectoryLogoPicker } from "@/components/ShectoryLogoPicker";
+import { ShectoryHealthWidget } from "@/components/ShectoryHealthWidget";
 
 export const dynamic = "force-dynamic";
 
@@ -30,13 +32,7 @@ export default async function ProjectsPage({
     <main className="mx-auto max-w-7xl px-4 py-6">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
         <div className="flex items-center gap-3">
-          <div>
-            <img
-              src="/brand/shectory-logo.gif"
-              alt="Shectory"
-              className="h-14 w-auto"
-            />
-          </div>
+          <ShectoryLogoPicker canUpload={canEditDescriptions} sizeClass="h-14" />
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-white">Shectory</h1>
             <p className="mt-0.5 text-slate-400">Панель управления · проекты</p>
@@ -80,7 +76,7 @@ export default async function ProjectsPage({
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-slate-500">Проекты</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((p) => (
+          {projects.filter((p) => p.slug !== "shectory-portal").map((p) => (
             <div
               key={p.id}
               className="group rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 shadow-lg transition hover:border-blue-500/40 hover:shadow-blue-900/20"
@@ -206,6 +202,7 @@ export default async function ProjectsPage({
           }))}
         />
       )}
+      <ShectoryHealthWidget />
     </main>
   );
 }

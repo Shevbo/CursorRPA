@@ -213,7 +213,9 @@ function defaultMermaid(name: string, slug: string): string {
       "  docs --> portal",
     ].join("\n");
   }
-  return `flowchart LR\n  ${name.replace(/[^a-zA-Z0-9]/g, "") || "Project"}[${name}]`;
+  const nodeId = name.replace(/[^a-zA-Z0-9]/g, "") || "Project";
+  const safe = name.replace(/"/g, '\\"');
+  return `flowchart LR\n  ${nodeId}["${safe}"]`;
 }
 
 function defaultAiContext(name: string): string {

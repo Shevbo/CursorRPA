@@ -24,8 +24,6 @@ function readWelcome(meta: unknown): WelcomeArtifacts {
 
 function missing(a: WelcomeArtifacts): string[] {
   const out: string[] = [];
-  if (!String(a.shectoryLogo ?? "").trim()) out.push("logo_shectory");
-  if (!String(a.projectLogo ?? "").trim()) out.push("logo_project");
   if (!String(a.mainFrameBrief ?? "").trim()) out.push("main_frame_brief");
   return out;
 }
@@ -49,7 +47,7 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
 export async function POST(req: Request, { params }: { params: { slug: string } }) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: { shectoryLogo?: string; projectLogo?: string; mainFrameBrief?: string };
+  let body: { mainFrameBrief?: string };
   try {
     body = await req.json();
   } catch {
@@ -64,8 +62,6 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     ? project.registryMetaJson
     : {}) as Record<string, unknown>;
   const nextWelcome = {
-    shectoryLogo: String(body.shectoryLogo ?? "").trim(),
-    projectLogo: String(body.projectLogo ?? "").trim(),
     mainFrameBrief: String(body.mainFrameBrief ?? "").trim(),
   };
   const nextMeta: Record<string, unknown> = {

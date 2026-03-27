@@ -51,6 +51,7 @@ export function BacklogTicketView({
   const [promptRun, setPromptRun] = useState<RunWithSteps | null>(null);
   const [promptRunConnected, setPromptRunConnected] = useState(false);
   const [proposedCmds, setProposedCmds] = useState<string[]>([]);
+  const [dismissedCmds, setDismissedCmds] = useState<string[]>([]);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
 
@@ -120,6 +121,26 @@ export function BacklogTicketView({
     }
     return "";
   }, [session?.messages]);
+  const parsedCmds = useMemo(() => {
+    const text = String(lastAssistantContent ?? "");
+    const out: string[] = [];
+    const re = /<<<SHELL_COMMAND>>>([\s\S]*?)<<<\/SHELL_COMMAND>>>/g;
+    let m: RegExpExecArray | null = null;
+    while ((m = re.exec(text))) {
+      const cmd = (m[1] ?? "").trim();
+      if (cmd) out.push(cmd);
+    }
+    return out;
+  }, [lastAssistantContent]);
+  const approvalCmds = useMemo(() => {
+    const merged = [...proposedCmds, ...parsedCmds].map((c) => c.trim()).filter(Boolean);
+    const uniq: string[] = [];
+    for (const c of merged) {
+      if (dismissedCmds.includes(c)) continue;
+      if (!uniq.includes(c)) uniq.push(c);
+    }
+    return uniq;
+  }, [dismissedCmds, parsedCmds, proposedCmds]);
   const waitingByCodeWord = lastAssistantContent.includes(WAITING_CODE);
   const waitingByHeuristic =
     /\?\s*$/.test(lastAssistantContent.trim()) ||
@@ -144,6 +165,11 @@ export function BacklogTicketView({
     }, 1000);
     return () => clearInterval(t);
   }, [clockSide, inSprint, session?.id]);
+
+  useEffect(() => {
+    // New assistant message may contain new approval requests.
+    setDismissedCmds([]);
+  }, [lastAssistantContent]);
 
   function formatClock(totalSeconds: number) {
     const s = Math.max(0, Math.floor(totalSeconds));
@@ -353,7 +379,6 @@ export function BacklogTicketView({
     if (!run?.id) return;
     const cmd = command.trim();
     if (!cmd) return;
-    if (!confirm(`Выполнить команду на сервере?\n\n${cmd}`)) return;
     setCmdRunning(true);
     setErr("");
     try {
@@ -366,7 +391,8 @@ export function BacklogTicketView({
       const j = (await r.json().catch(() => ({}))) as { error?: string };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setCmdInput("");
-      setProposedCmds([]);
+      setProposedCmds((prev) => prev.filter((c) => c.trim() !== cmd));
+      setDismissedCmds((prev) => [...prev, cmd]);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -822,16 +848,16 @@ export function BacklogTicketView({
               />
             </div>
             <div className="space-y-2 border-t border-slate-800 px-3 py-3">
-              {(proposedCmds.length > 0 || run?.status === "waiting_user") && (
+              {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
                 <div className="rounded border border-amber-900/60 bg-amber-900/10 p-3">
                   <div className="text-xs font-medium text-amber-200">Требуется подтверждение команды</div>
                   <div className="mt-1 text-[11px] leading-snug text-amber-200/80">
-                    Агент предложил выполнить команду в терминале. Ничего не будет выполнено, пока вы не нажмёте “Выполнить”.
+                    Агент запросил согласование. Подтвердите команду кнопкой “ОК” или отклоните “Отмена”.
                   </div>
 
-                  {proposedCmds.length > 0 && (
+                  {approvalCmds.length > 0 && (
                     <div className="mt-2 space-y-2">
-                      {proposedCmds.map((c, idx) => (
+                      {approvalCmds.map((c, idx) => (
                         <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
                           <pre className="whitespace-pre-wrap font-mono text-[11px] text-slate-200">{c}</pre>
                           <div className="mt-2 flex gap-2">
@@ -841,15 +867,15 @@ export function BacklogTicketView({
                               disabled={cmdRunning}
                               onClick={() => void execCommand(c)}
                             >
-                              Выполнить
+                              ОК
                             </button>
                             <button
                               type="button"
                               className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
                               disabled={cmdRunning}
-                              onClick={() => setProposedCmds([])}
+                              onClick={() => setDismissedCmds((prev) => [...prev, c])}
                             >
-                              Скрыть
+                              Отмена
                             </button>
                           </div>
                         </div>
@@ -873,7 +899,7 @@ export function BacklogTicketView({
                         disabled={cmdRunning || !cmdInput.trim()}
                         onClick={() => void execCommand(cmdInput)}
                       >
-                        Выполнить
+                        ОК
                       </button>
                     </div>
                   </div>

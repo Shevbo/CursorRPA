@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, ChatSession } from "@prisma/client";
 import { BacklogPanel } from "@/components/BacklogPanel";
 import { fetchChatSession, waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
@@ -27,7 +27,7 @@ type BotStatus = {
   lastError?: string;
 };
 type WelcomeStatus = {
-  artifacts?: { shectoryLogo?: string; projectLogo?: string; mainFrameBrief?: string };
+  artifacts?: { mainFrameBrief?: string };
   missing?: string[];
   user?: { email?: string; role?: string } | null;
 };
@@ -37,11 +37,13 @@ export function ProjectWorkspace({
   projectId,
   workspacePath,
   initialSessions,
+  className = "",
 }: {
   projectSlug: string;
   projectId: string;
   workspacePath: string;
   initialSessions: SessionWithMessages[];
+  className?: string;
 }) {
   const [tab, setTab] = useState<"files" | "terminal" | "chat" | "backlog" | "tests" | "deploy" | "bot">("chat");
   const [sessions, setSessions] = useState(initialSessions);
@@ -62,13 +64,16 @@ export function ProjectWorkspace({
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [welcomeLoading, setWelcomeLoading] = useState(false);
   const [welcomeErr, setWelcomeErr] = useState("");
-  const [shectoryLogo, setShectoryLogo] = useState("");
-  const [projectLogo, setProjectLogo] = useState("");
   const [mainFrameBrief, setMainFrameBrief] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId),
     [sessions, activeId]
   );
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [active?.messages, activeId, loading, tab]);
 
   const proposedCmds = useMemo(() => {
     const lastAssistant = [...(active?.messages ?? [])].reverse().find((m) => m.role === "assistant");
@@ -226,8 +231,6 @@ export function ProjectWorkspace({
         if (cancelled) return;
         const email = String(j.user?.email ?? "").toLowerCase();
         const mustOpen = email === "bshevelev@mail.ru" && Array.isArray(j.missing) && j.missing.length > 0;
-        setShectoryLogo(String(j.artifacts?.shectoryLogo ?? ""));
-        setProjectLogo(String(j.artifacts?.projectLogo ?? ""));
         setMainFrameBrief(String(j.artifacts?.mainFrameBrief ?? ""));
         setWelcomeOpen(mustOpen);
       } catch {
@@ -248,8 +251,6 @@ export function ProjectWorkspace({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shectoryLogo: shectoryLogo.trim(),
-          projectLogo: projectLogo.trim(),
           mainFrameBrief: mainFrameBrief.trim(),
         }),
       });
@@ -264,8 +265,8 @@ export function ProjectWorkspace({
   };
 
   return (
-    <div className="flex min-h-[420px] flex-col gap-4">
-      <div className="flex gap-2 border-b border-slate-800 pb-2">
+    <div className={`flex min-h-0 flex-1 flex-col ${className}`.trim()}>
+      <div className="flex shrink-0 flex-wrap gap-2 border-b border-slate-800 bg-slate-950 py-2">
         {(["chat", "files", "backlog", "tests", "deploy", "bot", "terminal"] as const).map((t) => (
           <button
             key={t}
@@ -298,42 +299,44 @@ export function ProjectWorkspace({
         ))}
       </div>
 
-      {tab === "chat" && (
-        <div className="flex flex-1 flex-col gap-3 lg:flex-row">
-          <div className="w-full shrink-0 lg:w-48">
-            <div className="text-xs text-slate-500">Сессии</div>
-            <ul className="mt-1 space-y-1">
-              {sessions.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveId(s.id)}
-                    className={`w-full rounded px-2 py-1 text-left text-sm ${
-                      s.id === activeId ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
-                    }`}
-                  >
-                    {s.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex min-h-[320px] flex-1 flex-col rounded-lg border border-slate-800 bg-black/20">
-            <div className="flex-1 space-y-3 overflow-y-auto p-4 text-sm">
-              {active?.messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"
-                  }
-                >
-                  <div className="text-xs text-slate-500">{m.role}</div>
-                  <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">{m.content}</pre>
-                </div>
-              ))}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {tab === "chat" && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row lg:gap-3">
+            <div className="w-full shrink-0 lg:w-48">
+              <div className="text-xs text-slate-500">Сессии</div>
+              <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto lg:max-h-none">
+                {sessions.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveId(s.id)}
+                      className={`w-full rounded px-2 py-1 text-left text-sm ${
+                        s.id === activeId ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
+                      }`}
+                    >
+                      {s.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
-            {(proposedCmds.length > 0 || cmdInput.trim()) && (
-              <div className="border-t border-slate-800 bg-amber-950/20 p-3 text-sm">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-slate-800 bg-black/20">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 text-sm">
+                {active?.messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={
+                      m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"
+                    }
+                  >
+                    <div className="text-xs text-slate-500">{m.role}</div>
+                    <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">{m.content}</pre>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
+              </div>
+              {(proposedCmds.length > 0 || cmdInput.trim()) && (
+              <div className="shrink-0 border-t border-slate-800 bg-amber-950/20 p-3 text-sm">
                 <div className="mb-2 text-xs text-amber-200/80">
                   Агент предложил терминальные команды. Выполнение только после вашего подтверждения.
                 </div>
@@ -369,42 +372,46 @@ export function ProjectWorkspace({
                   </div>
                 </div>
               </div>
-            )}
-            <div className="flex gap-2 border-t border-slate-800 p-2">
-              <input
-                className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                placeholder="Сообщение агенту Cursor (выполняется agent CLI на сервере)…"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void send())}
-              />
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => void send()}
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {loading ? "…" : "Отправить"}
-              </button>
+              )}
+              <div className="shrink-0 border-t border-slate-800 bg-slate-950/80 p-2">
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                    placeholder="Сообщение агенту Cursor (выполняется agent CLI на сервере)…"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void send())}
+                  />
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void send()}
+                    className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {loading ? "…" : "Отправить"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === "files" && (
-        <pre className="max-h-96 overflow-auto rounded-lg border border-slate-800 bg-black/40 p-4 text-xs text-green-400">
-          {tree || "Нажмите вкладку ещё раз или откройте Files — загрузка дерева…"}
-        </pre>
-      )}
+        {tab === "files" && (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <pre className="min-h-[12rem] rounded-lg border border-slate-800 bg-black/40 p-4 text-xs text-green-400">
+              {tree || "Нажмите вкладку ещё раз или откройте Files — загрузка дерева…"}
+            </pre>
+          </div>
+        )}
 
-      {tab === "backlog" && (
-        <div className="rounded-lg border border-slate-800 bg-black/20 p-4">
-          <BacklogPanel projectId={projectId} projectSlug={projectSlug} variant="embedded" />
-        </div>
-      )}
+        {tab === "backlog" && (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
+            <BacklogPanel projectId={projectId} projectSlug={projectSlug} variant="embedded" />
+          </div>
+        )}
 
-      {tab === "tests" && (
-        <div className="space-y-3 rounded-lg border border-slate-800 bg-black/20 p-4">
+        {tab === "tests" && (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
           <div className="grid gap-2 lg:grid-cols-3">
             <input
               className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
@@ -494,11 +501,11 @@ export function ProjectWorkspace({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+          </div>
+        )}
 
-      {tab === "deploy" && (
-        <div className="space-y-3 rounded-lg border border-slate-800 bg-black/20 p-4">
+        {tab === "deploy" && (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
           <div className="flex gap-2">
             <input
               className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
@@ -539,11 +546,11 @@ export function ProjectWorkspace({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+          </div>
+        )}
 
-      {tab === "bot" && (
-        <div className="space-y-3 rounded-lg border border-slate-800 bg-black/20 p-4">
+        {tab === "bot" && (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
           <div className="rounded border border-slate-800 bg-slate-900/40 p-3 text-sm">
             <div className="text-slate-200">
               unit: <span className="text-slate-400">{botStatus?.unitName ?? "(нет данных)"}</span>
@@ -606,43 +613,28 @@ export function ProjectWorkspace({
           <p className="text-xs text-slate-500">
             Для каждого проекта создаётся отдельный systemd user unit и отдельный env с токеном/аудиторией.
           </p>
-        </div>
-      )}
+          </div>
+        )}
 
-      {tab === "terminal" && (
-        <div className="rounded-lg border border-slate-800 bg-black/40 p-4 text-sm text-slate-300">
-          <p>Веб-терминал не встроён (безопасность). Используйте SSH на Shectory:</p>
-          <pre className="mt-2 text-green-400">ssh shectory-work</pre>
-          <p className="mt-2 text-slate-500">Рабочий каталог проекта:</p>
-          <pre className="text-slate-200">{workspacePath}</pre>
-        </div>
-      )}
+        {tab === "terminal" && (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/40 p-4 text-sm text-slate-300">
+            <p>Веб-терминал не встроён (безопасность). Используйте SSH на Shectory:</p>
+            <pre className="mt-2 text-green-400">ssh shectory-work</pre>
+            <p className="mt-2 text-slate-500">Рабочий каталог проекта:</p>
+            <pre className="text-slate-200">{workspacePath}</pre>
+          </div>
+        )}
+      </div>
       {welcomeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
           <div className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-950 p-5">
             <h3 className="text-lg font-semibold text-white">Сбор артефактов welcome-экрана</h3>
             <p className="mt-1 text-sm text-slate-400">
-              Для стандарта Shectory заполните 3 обязательных пункта перед дальнейшей работой в проекте.
+              Для стандарта Shectory заполните описание основного фрейма welcome-экрана.
             </p>
             <div className="mt-4 space-y-3">
               <label className="block text-sm text-slate-300">
-                1) Лого Shectory (URL/путь/описание)
-                <input
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                  value={shectoryLogo}
-                  onChange={(e) => setShectoryLogo(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm text-slate-300">
-                2) Лого проекта (URL/путь/описание)
-                <input
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
-                  value={projectLogo}
-                  onChange={(e) => setProjectLogo(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm text-slate-300">
-                3) Что должно быть в основном фрейме welcome-экрана
+                Что должно быть в основном фрейме welcome-экрана
                 <textarea
                   className="mt-1 min-h-28 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
                   value={mainFrameBrief}
@@ -650,19 +642,24 @@ export function ProjectWorkspace({
                 />
               </label>
               {welcomeErr && <div className="text-sm text-red-400">{welcomeErr}</div>}
-              <button
-                type="button"
-                disabled={
-                  welcomeLoading ||
-                  !shectoryLogo.trim() ||
-                  !projectLogo.trim() ||
-                  !mainFrameBrief.trim()
-                }
-                onClick={() => void saveWelcomeArtifacts()}
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {welcomeLoading ? "Сохраняю..." : "Сохранить и продолжить"}
-              </button>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={welcomeLoading}
+                  onClick={() => setWelcomeOpen(false)}
+                  className="rounded border border-slate-700 px-4 py-2 text-sm text-slate-200 disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={welcomeLoading || !mainFrameBrief.trim()}
+                  onClick={() => void saveWelcomeArtifacts()}
+                  className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {welcomeLoading ? "Сохраняю..." : "Сохранить и продолжить"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_NAME="${SERVICE_NAME:-shectory-portal.service}"
 PUBLIC_URL="${PUBLIC_URL:-https://shectory.ru}"
+# After restart, curl ${PUBLIC_URL}/login and require global CSS → HTTP 200 (set 0 to skip).
+VERIFY_CSS="${VERIFY_CSS:-1}"
 DO_GIT_PULL="${DO_GIT_PULL:-0}"
 DO_DB_PUSH="${DO_DB_PUSH:-0}"
 DO_DB_SEED="${DO_DB_SEED:-0}"
@@ -42,19 +44,6 @@ npm run -s build --prefix shectory-portal
 BUILT_CSS="$(ls -1 shectory-portal/.next/static/css/*.css 2>/dev/null | head -n 1 || true)"
 if [[ -n "${BUILT_CSS}" ]]; then
   echo "[deploy] built css: ${BUILT_CSS#${ROOT_DIR}/}"
-fi
-
-if command -v curl >/dev/null 2>&1; then
-  LIVE_CSS="$(
-    curl -fsS "${PUBLIC_URL}/" \
-      | tr -d '\r\n' \
-      | grep -oE '/_next/static/css/[^"'"'"']+\.css' \
-      | head -n 1 \
-      || true
-  )"
-  if [[ -n "${LIVE_CSS}" ]]; then
-    echo "[deploy] live html references css: $LIVE_CSS"
-  fi
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
@@ -103,11 +92,28 @@ if [[ ! "$(command -v systemctl >/dev/null 2>&1; echo $?)" == "0" ]] || ! system
   fi
 fi
 
-if [[ -n "${BUILT_CSS}" && -n "${LIVE_CSS:-}" ]]; then
-  BUILT_CSS_BASENAME="/_next/static/css/$(basename "$BUILT_CSS")"
-  if [[ "$BUILT_CSS_BASENAME" != "$LIVE_CSS" ]]; then
-    echo "[deploy] WARN: live site css hash differs from built output."
-    echo "[deploy]      This usually means the running service is using a different build directory or wasn't restarted."
+if [[ "${VERIFY_CSS}" == "1" ]] && command -v curl >/dev/null 2>&1; then
+  echo "[deploy] verify live stylesheet (GET ${PUBLIC_URL}/login → CSS URL → expect 200)"
+  sleep 2
+  LOGIN_HTML="$(curl -fsS "${PUBLIC_URL}/login" 2>/dev/null || true)"
+  LIVE_CSS="$(echo "$LOGIN_HTML" | tr -d '\r\n' | grep -oE '/_next/static/css/[a-f0-9]+\.css' | head -n 1 || true)"
+  if [[ -z "${LIVE_CSS}" ]]; then
+    echo "[deploy] WARN: could not parse CSS path from /login HTML (skip VERIFY_CSS)"
+  else
+    CSS_CODE="$(curl -sS -o /dev/null -w "%{http_code}" "${PUBLIC_URL}${LIVE_CSS}" 2>/dev/null || echo "000")"
+    if [[ "${CSS_CODE}" != "200" ]]; then
+      echo "[deploy] ERROR: ${PUBLIC_URL}${LIVE_CSS} returned HTTP ${CSS_CODE} (expected 200)."
+      echo "[deploy]         UI will be unstyled. Fix nginx / reverse proxy for /_next/static/*"
+      echo "[deploy]         (see scripts/nginx-shectory-portal.conf)."
+      exit 1
+    fi
+    echo "[deploy] OK: stylesheet ${LIVE_CSS} → 200"
+    if [[ -n "${BUILT_CSS}" ]]; then
+      BUILT_CSS_BASENAME="/_next/static/css/$(basename "$BUILT_CSS")"
+      if [[ "${BUILT_CSS_BASENAME}" != "${LIVE_CSS}" ]]; then
+        echo "[deploy] WARN: live HTML references ${LIVE_CSS} but this build has ${BUILT_CSS_BASENAME} — stale cache or wrong WorkingDirectory."
+      fi
+    fi
   fi
 fi
 

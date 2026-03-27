@@ -39,6 +39,7 @@ export function ProjectCardAdminDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [projectLogo, setProjectLogo] = useState("");
+  const [logoUploading, setLogoUploading] = useState(false);
   const [overviewUrl, setOverviewUrl] = useState("");
   const [uiUrl, setUiUrl] = useState("");
   const [stage, setStage] = useState("dev");
@@ -47,6 +48,12 @@ export function ProjectCardAdminDialog({
 
   const cur = projects[idx];
   const currentMeta = useMemo(() => readCardMeta(cur?.registryMetaJson), [cur?.registryMetaJson]);
+
+  useEffect(() => {
+    if (!autoOpen) return;
+    setIdx(0);
+    setOpen(true);
+  }, [autoOpen]);
 
   useEffect(() => {
     if (!cur) return;
@@ -60,6 +67,37 @@ export function ProjectCardAdminDialog({
   }, [cur, currentMeta.generatedOverviewUrl, currentMeta.projectLogo]);
 
   if (!open || !cur) return null;
+
+  async function uploadLogo(f: File) {
+    setErr("");
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("slug", cur.slug);
+      fd.append("file", f);
+      const r = await fetch("/api/upload/project-logo", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const raw = await r.text();
+      const j = (() => {
+        try {
+          return JSON.parse(raw) as { error?: string; url?: string };
+        } catch {
+          return null;
+        }
+      })();
+      if (!r.ok) throw new Error(j?.error ?? `Не удалось загрузить лого (HTTP ${r.status})`);
+      const url = String(j?.url ?? "").trim();
+      if (!url) throw new Error("Сервер не вернул url");
+      setProjectLogo(url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLogoUploading(false);
+    }
+  }
 
   async function saveCurrent() {
     setErr("");
@@ -130,8 +168,28 @@ export function ProjectCardAdminDialog({
           </label>
 
           <label className="block text-sm text-slate-300">
-            1) Лого проекта (URL/путь/описание)
-            <input className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-white" value={projectLogo} onChange={(e) => setProjectLogo(e.target.value)} />
+            1) Лого проекта (загрузка файла)
+            <div className="mt-1 grid gap-2 rounded border border-slate-800 bg-black/20 p-3">
+              <input
+                type="file"
+                accept="image/*"
+                disabled={logoUploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void uploadLogo(f);
+                  e.currentTarget.value = "";
+                }}
+                className="block w-full text-sm text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-100 hover:file:bg-slate-700 disabled:opacity-60"
+              />
+              <div className="text-xs text-slate-500">
+                {logoUploading ? "Загрузка..." : projectLogo ? `Сохранено как: ${projectLogo}` : "Файл не выбран"}
+              </div>
+              {projectLogo && (
+                <div className="rounded border border-slate-800 bg-slate-950 p-2">
+                  <img src={projectLogo} alt="project logo" className="max-h-20 w-auto" />
+                </div>
+              )}
+            </div>
           </label>
 
           <label className="block text-sm text-slate-300">
@@ -172,8 +230,12 @@ export function ProjectCardAdminDialog({
         </div>
 
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-300" onClick={() => setOpen(false)}>
-            Закрыть
+          <button
+            type="button"
+            className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-300"
+            onClick={() => setOpen(false)}
+          >
+            Отмена
           </button>
           <button type="button" disabled={saving} onClick={() => void next()} className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
             {saving ? "Сохраняю..." : idx >= projects.length - 1 ? "Сохранить и завершить" : "Сохранить и далее"}

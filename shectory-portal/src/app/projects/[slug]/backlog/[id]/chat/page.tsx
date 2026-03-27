@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 
@@ -16,7 +16,7 @@ function formatMsgTime(iso: string): string {
   }
 }
 
-export default function TicketChatFramePage({ params }: { params: { slug: string; id: string } }) {
+function TicketChatFramePageInner({ params }: { params: { slug: string; id: string } }) {
   const WAITING_CODE = "[***waiting for answer***]";
   const sp = useSearchParams();
   const sessionId = useMemo(() => (sp.get("sessionId") || "").trim(), [sp]);
@@ -195,5 +195,17 @@ export default function TicketChatFramePage({ params }: { params: { slug: string
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TicketChatFramePage({ params }: { params: { slug: string; id: string } }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-400">Загрузка…</div>
+      }
+    >
+      <TicketChatFramePageInner params={params} />
+    </Suspense>
   );
 }
