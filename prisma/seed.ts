@@ -140,6 +140,8 @@ async function main() {
       "Унифицированная аутентификация/пользователи/доступы (вынесено из komissionka):",
       "- Документация: /home/shectory/workspaces/CursorRPA/docs/unified-auth-users-rbac-ru.md",
       "- Шаблон для Next.js+Prisma: /home/shectory/workspaces/CursorRPA/templates/shectory-auth-nextjs-prisma/",
+      "- Глобальный superadmin: bshevelev@mail.ru.",
+      "- В прикладных проектах запрещены автономные каталоги пользователей; использовать единый каталог Shectory и единый RBAC-контракт.",
     ].join("\n");
     await prisma.project.upsert({
       where: { slug: p.slug },

@@ -77,6 +77,8 @@ const UNIVERSAL_DEPLOY_BLOCK = [
   "Единый каталог пользователей и RBAC:",
   "- Документ: /home/shectory/workspaces/CursorRPA/docs/unified-auth-users-rbac-ru.md",
   "- Минимальные роли: user/admin. Управление ролями только у admin.",
+  "- Учётка bshevelev@mail.ru — глобальный superadmin.",
+  "- В прикладных проектах запрещены автономные каталоги пользователей; использовать только единый каталог/контракт Shectory.",
 ].join("\n");
 
 function workspaceRoot(): string {

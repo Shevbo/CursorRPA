@@ -83,8 +83,8 @@ export async function ensureDefaultAdminUser() {
   const email = normalizeEmail(process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL);
   await prisma.portalUser.upsert({
     where: { email },
-    create: { email, role: "admin" },
-    update: {},
+    create: { email, role: "superadmin" },
+    update: { role: "superadmin" },
   });
 }
 
@@ -100,7 +100,7 @@ export async function setPortalUserPassword(emailRaw: string, password: string, 
     where: { email },
     create: {
       email,
-      role: email === normalizeEmail(process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL) ? "admin" : "user",
+      role: email === normalizeEmail(process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL) ? "superadmin" : "user",
       passwordHash: hash,
       emailVerifiedAt: verifyEmail ? new Date() : null,
     },
@@ -218,12 +218,12 @@ export async function consumeEmailCode(emailRaw: string, purpose: "register" | "
 
 export function isAdminRequest(req: Request): boolean {
   const s = currentPortalSessionFromRequest(req);
-  return s?.role === "admin";
+  return s?.role === "admin" || s?.role === "superadmin";
 }
 
 export function isAdminSession(): boolean {
   const s = currentPortalSessionFromCookies();
-  return s?.role === "admin";
+  return s?.role === "admin" || s?.role === "superadmin";
 }
 
 export function currentUserEmail(): string | null {
