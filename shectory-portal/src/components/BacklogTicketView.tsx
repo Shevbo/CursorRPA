@@ -58,6 +58,11 @@ export function BacklogTicketView({
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
   const [ticketDetailsOpen, setTicketDetailsOpen] = useState(false);
+  const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [reasoningEvents, setReasoningEvents] = useState<
+    { seq: number; type: string; message: string; createdAt: string; data: unknown }[]
+  >([]);
   const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
   const [clockTick, setClockTick] = useState(0);
   const autoShellInFlight = useRef(false);
@@ -130,6 +135,31 @@ export function BacklogTicketView({
     }
     return "";
   }, [session?.messages]);
+
+  const reasoningLogText = useMemo(() => {
+    if (reasoningEvents.length === 0) return "";
+    const lines = reasoningEvents.map((e) => {
+      let time = e.createdAt;
+      try {
+        time = new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(e.createdAt));
+      } catch {
+        /* keep iso */
+      }
+      let block = `[${time}] ${e.type} · ${e.message || ""}`;
+      const d = e.data;
+      if (e.type === "cmd_output" && d && typeof d === "object") {
+        const o = d as { stdout?: string; stderr?: string };
+        if (o.stdout?.trim()) block += `\n${o.stdout}`;
+        if (o.stderr?.trim()) block += `\nstderr:\n${o.stderr}`;
+      }
+      if (e.type === "cmd_proposed" && d && typeof d === "object") {
+        const cmds = (d as { commands?: unknown }).commands;
+        if (Array.isArray(cmds)) block += `\n${cmds.map((c) => String(c)).join("\n")}`;
+      }
+      return block;
+    });
+    return lines.join("\n\n---\n\n");
+  }, [reasoningEvents]);
   const parsedCmds = useMemo(() => {
     const text = String(lastAssistantContent ?? "");
     const out: string[] = [];
@@ -155,6 +185,35 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
+
+  useEffect(() => {
+    if (!reasoningOpen) return;
+    if (!run?.id) {
+      setReasoningEvents([]);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`/api/agent-runs/${encodeURIComponent(run.id)}/events?limit=400`, {
+          credentials: "include",
+        });
+        const j = (await r.json().catch(() => ({}))) as {
+          events?: { seq: number; type: string; message: string; createdAt: string; data: unknown }[];
+        };
+        if (!r.ok || cancelled) return;
+        setReasoningEvents(Array.isArray(j.events) ? j.events : []);
+      } catch {
+        if (!cancelled) setReasoningEvents([]);
+      }
+    };
+    void load();
+    const t = window.setInterval(() => void load(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [reasoningOpen, run?.id]);
 
   useEffect(() => {
     try {
@@ -249,7 +308,7 @@ export function BacklogTicketView({
       startedAt,
       note:
         typeof orchPhases === "number"
-          ? `⏳ Агент запущен: ${orchPhases} шагов; прогресс будет в чеклисте и в ленте…`
+          ? `⏳ Агент запущен: ${orchPhases} шагов; прогресс — в чеклисте и в чате…`
           : "⏳ Агент думает…",
     });
 
@@ -346,7 +405,7 @@ export function BacklogTicketView({
             prev
               ? {
                   ...prev,
-                  note: "✅ Ответ агента получен (см. ленту).",
+                  note: "✅ Ответ агента получен (см. чат).",
                 }
               : prev
           );
@@ -391,7 +450,7 @@ export function BacklogTicketView({
       const cmd = command.trim();
       if (!cmd) return;
       if (!run?.id && !session?.id) {
-        setErr("Нет сессии чата для выполнения команды (откройте ленту под тикетом).");
+        setErr("Нет сессии чата для выполнения команды (откройте чат с агентом).");
         return;
       }
       setCmdRunning(true);
@@ -614,68 +673,95 @@ export function BacklogTicketView({
             <div className="mt-1 text-xs text-slate-500">{Math.min(200, item.title?.length ?? 0)}/200</div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40">
             <button
               type="button"
-              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40"
-              onClick={() => {
-                setEditMode(true);
-                setNeedsStart(true);
-              }}
-              disabled={inSprint}
-              title={inSprint ? "Редактирование в спринте ограничено" : "Разблокировать поля и подготовить тикет к запуску"}
+              className="flex w-full touch-manipulation items-center justify-between gap-3 px-3 py-3 text-left sm:py-2.5"
+              onClick={() => setTicketManagementOpen((o) => !o)}
+              aria-expanded={ticketManagementOpen}
+              id="ticket-management-toggle"
             >
-              Редактировать тикет
-            </button>
-            <button
-              type="button"
-              className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50"
-              disabled={saving}
-              onClick={() => void save({ title: item.title, description: item.description, descriptionPrompt: item.descriptionPrompt })}
-            >
-              Сохранить (ждать запуска)
-            </button>
-            <button
-              type="button"
-              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40"
-              onClick={() => void togglePause()}
-            >
-              {item.isPaused ? "Продолжить" : "Запарковать"}
-            </button>
-            <button
-              type="button"
-              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
-              disabled={inSprint}
-              onClick={() => void addToSprint()}
-              title={inSprint ? "Тикет уже в спринте" : "Добавить тикет в спринт"}
-            >
-              Включить в спринт
-            </button>
-            <button
-              type="button"
-              className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
-              disabled={inSprint || startPending || agentWaiting}
-              onClick={() => void startWork(false)}
-              title={
-                inSprint
-                  ? "Работа идёт в рамках спринта"
-                  : agentWaiting
-                    ? "Агент ждёт вашего ответа. Нажмите «Отправить» в поле чата."
-                    : "Создать/открыть ленту агента под тикетом"
-              }
-            >
-              {agentWaiting ? "Агент ждёт ответа" : startPending ? "Агент думает…" : needsStart ? "Запустить в работу" : "Перезапустить агента"}
-            </button>
-            {startPending && Date.now() - startPendingSince > 30000 && !inSprint && !agentWaiting && (
-              <button
-                type="button"
-                className="rounded border border-amber-900/60 px-3 py-2 text-sm text-amber-200 hover:bg-amber-900/10"
-                onClick={() => void startWork(true)}
-                title="Повторно отправить контекст и перезапустить агента"
+              <span className="text-sm font-medium text-slate-200">Управление</span>
+              <span
+                className={`inline-flex size-8 shrink-0 items-center justify-center rounded border border-slate-700 text-xs text-slate-400 transition-transform duration-200 sm:size-7 ${
+                  ticketManagementOpen ? "rotate-180" : ""
+                }`}
+                aria-hidden
               >
-                Повторить запуск
-              </button>
-            )}
+                ▼
+              </span>
+            </button>
+            {ticketManagementOpen ? (
+              <div
+                className="space-y-3 border-t border-slate-800 px-3 pb-4 pt-3"
+                role="region"
+                aria-labelledby="ticket-management-toggle"
+              >
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40"
+                    onClick={() => {
+                      setEditMode(true);
+                      setNeedsStart(true);
+                    }}
+                    disabled={inSprint}
+                    title={inSprint ? "Редактирование в спринте ограничено" : "Разблокировать поля и подготовить тикет к запуску"}
+                  >
+                    Редактировать тикет
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+                    disabled={saving}
+                    onClick={() => void save({ title: item.title, description: item.description, descriptionPrompt: item.descriptionPrompt })}
+                  >
+                    Сохранить (ждать запуска)
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40"
+                    onClick={() => void togglePause()}
+                  >
+                    {item.isPaused ? "Продолжить" : "Запарковать"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
+                    disabled={inSprint}
+                    onClick={() => void addToSprint()}
+                    title={inSprint ? "Тикет уже в спринте" : "Добавить тикет в спринт"}
+                  >
+                    Включить в спринт
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
+                    disabled={inSprint || startPending || agentWaiting}
+                    onClick={() => void startWork(false)}
+                    title={
+                      inSprint
+                        ? "Работа идёт в рамках спринта"
+                        : agentWaiting
+                          ? "Агент ждёт вашего ответа. Нажмите «Отправить» в поле чата."
+                          : "Создать/открыть чат с агентом под тикетом"
+                    }
+                  >
+                    {agentWaiting ? "Агент ждёт ответа" : startPending ? "Агент думает…" : needsStart ? "Запустить в работу" : "Перезапустить агента"}
+                  </button>
+                  {startPending && Date.now() - startPendingSince > 30000 && !inSprint && !agentWaiting && (
+                    <button
+                      type="button"
+                      className="rounded border border-amber-900/60 px-3 py-2 text-sm text-amber-200 hover:bg-amber-900/10"
+                      onClick={() => void startWork(true)}
+                      title="Повторно отправить контекст и перезапустить агента"
+                    >
+                      Повторить запуск
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -835,7 +921,7 @@ export function BacklogTicketView({
         <div className="border-b border-slate-800 p-3 sm:p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="text-sm font-medium text-white">Лента под тикетом</div>
+              <div className="text-sm font-medium text-white">Чат с агентом</div>
               {agentWaiting && !inSprint ? (
                 <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-600/50 bg-amber-950/50 px-2.5 py-1.5 text-[11px] font-medium text-amber-100 sm:py-1">
                   <span className="inline-block size-1.5 animate-pulse rounded-full bg-amber-400" aria-hidden />
@@ -923,7 +1009,7 @@ export function BacklogTicketView({
                 </div>
               </div>
             )}
-            <div className="relative z-0 isolate min-h-[220px] h-[32vh] sm:h-[38vh] sm:min-h-[260px]">
+            <div className="relative z-0 isolate min-h-[440px] h-[64vh] sm:h-[76vh] sm:min-h-[520px]">
               <iframe
                 className="h-full w-full touch-manipulation border-0"
                 src={`/projects/${encodeURIComponent(projectSlug)}/backlog/${encodeURIComponent(itemId)}/chat?sessionId=${encodeURIComponent(session.id)}`}
@@ -993,19 +1079,52 @@ export function BacklogTicketView({
                   </div>
                 </div>
               )}
-              <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
-                <span>Прогресс (после последнего запуска)</span>
-                <span className="font-mono text-slate-300">
-                  {runProgress.done}/{runProgress.total}
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="h-full rounded-full bg-emerald-600 transition-[width] duration-500"
-                  style={{
-                    width: `${runProgress.total ? Math.min(100, (100 * runProgress.done) / runProgress.total) : 0}%`,
-                  }}
-                />
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40">
+                <button
+                  type="button"
+                  className="flex w-full touch-manipulation items-center justify-between gap-3 px-3 py-3 text-left sm:py-2.5"
+                  onClick={() => setReasoningOpen((o) => !o)}
+                  aria-expanded={reasoningOpen}
+                  id="reasoning-window-toggle"
+                >
+                  <span className="text-sm font-medium text-slate-200">Окно рассуждений</span>
+                  <span
+                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded border border-slate-700 text-xs text-slate-400 transition-transform duration-200 sm:size-7 ${
+                      reasoningOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden
+                  >
+                    ▼
+                  </span>
+                </button>
+                {reasoningOpen ? (
+                  <div
+                    className="space-y-3 border-t border-slate-800 px-3 pb-4 pt-3"
+                    role="region"
+                    aria-labelledby="reasoning-window-toggle"
+                  >
+                    <p className="text-[11px] leading-snug text-slate-500">
+                      Журнал событий оркестратора (обновление ~2 с). Текст ответа агента по шагам дублируется в чате выше; здесь — ход
+                      процесса и вывод подтверждённых команд.
+                    </p>
+                    {run?.id ? (
+                      <div>
+                        <div className="text-xs font-medium text-slate-400">События запуска</div>
+                        <pre className="mt-1 max-h-[min(30vh,320px)] overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-black/30 p-2 font-mono text-[10px] text-slate-300">
+                          {reasoningLogText || "Пока нет записей…"}
+                        </pre>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">События появятся после запуска агента (есть run в БД).</p>
+                    )}
+                    <div>
+                      <div className="text-xs font-medium text-slate-400">Текущий вывод агента (последнее сообщение в чате)</div>
+                      <pre className="mt-1 max-h-[min(40vh,420px)] overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-black/30 p-2 font-mono text-[11px] text-slate-200">
+                        {lastAssistantContent.trim() || "—"}
+                      </pre>
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -1021,7 +1140,7 @@ export function BacklogTicketView({
           </div>
         ) : (
           <div className="p-4 text-sm text-slate-500">
-            {inSprint ? "Чат тикета отключён — работа ведётся в рамках спринта." : "Пока нет ленты. Нажмите “Запустить сразу в работу”."}
+            {inSprint ? "Чат тикета отключён — работа ведётся в рамках спринта." : "Пока нет чата. Нажмите «Запустить в работу» в блоке «Управление»."}
           </div>
         )}
       </div>
