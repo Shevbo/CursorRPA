@@ -59,10 +59,6 @@ export function BacklogTicketView({
   const [cmdRunning, setCmdRunning] = useState(false);
   const [ticketDetailsOpen, setTicketDetailsOpen] = useState(false);
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
-  const [reasoningOpen, setReasoningOpen] = useState(false);
-  const [reasoningEvents, setReasoningEvents] = useState<
-    { seq: number; type: string; message: string; createdAt: string; data: unknown }[]
-  >([]);
   const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
   const [clockTick, setClockTick] = useState(0);
   const autoShellInFlight = useRef(false);
@@ -136,30 +132,6 @@ export function BacklogTicketView({
     return "";
   }, [session?.messages]);
 
-  const reasoningLogText = useMemo(() => {
-    if (reasoningEvents.length === 0) return "";
-    const lines = reasoningEvents.map((e) => {
-      let time = e.createdAt;
-      try {
-        time = new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(e.createdAt));
-      } catch {
-        /* keep iso */
-      }
-      let block = `[${time}] ${e.type} · ${e.message || ""}`;
-      const d = e.data;
-      if (e.type === "cmd_output" && d && typeof d === "object") {
-        const o = d as { stdout?: string; stderr?: string };
-        if (o.stdout?.trim()) block += `\n${o.stdout}`;
-        if (o.stderr?.trim()) block += `\nstderr:\n${o.stderr}`;
-      }
-      if (e.type === "cmd_proposed" && d && typeof d === "object") {
-        const cmds = (d as { commands?: unknown }).commands;
-        if (Array.isArray(cmds)) block += `\n${cmds.map((c) => String(c)).join("\n")}`;
-      }
-      return block;
-    });
-    return lines.join("\n\n---\n\n");
-  }, [reasoningEvents]);
   const parsedCmds = useMemo(() => {
     const text = String(lastAssistantContent ?? "");
     const out: string[] = [];
@@ -185,35 +157,6 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
-
-  useEffect(() => {
-    if (!reasoningOpen) return;
-    if (!run?.id) {
-      setReasoningEvents([]);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const r = await fetch(`/api/agent-runs/${encodeURIComponent(run.id)}/events?limit=400`, {
-          credentials: "include",
-        });
-        const j = (await r.json().catch(() => ({}))) as {
-          events?: { seq: number; type: string; message: string; createdAt: string; data: unknown }[];
-        };
-        if (!r.ok || cancelled) return;
-        setReasoningEvents(Array.isArray(j.events) ? j.events : []);
-      } catch {
-        if (!cancelled) setReasoningEvents([]);
-      }
-    };
-    void load();
-    const t = window.setInterval(() => void load(), 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, [reasoningOpen, run?.id]);
 
   useEffect(() => {
     try {
@@ -651,26 +594,23 @@ export function BacklogTicketView({
     <div className="max-w-full space-y-4 overflow-x-hidden [-webkit-tap-highlight-color:transparent] sm:overflow-x-visible">
       <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 sm:p-5">
         <div className="space-y-3">
-          <div>
-            <div className="text-xs text-slate-500">Ticket</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <div className="font-mono text-sm text-blue-300">{ticketIdLabel(item)}</div>
-              {item.isPaused && <span className="rounded bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">paused</span>}
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">
+              <span className="font-mono text-xs text-blue-300">{ticketIdLabel(item)}</span>
+              {item.isPaused && <span className="rounded bg-amber-900/40 px-1.5 py-0.5 text-[10px] text-amber-300">paused</span>}
               {inSprint && (
-                <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-xs text-emerald-300">
-                  in sprint #{item.sprintNumber}
-                </span>
+                <span className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[10px] text-emerald-300">sprint #{item.sprintNumber}</span>
               )}
             </div>
             <textarea
-              className="mt-3 min-h-[4.5rem] w-full resize-y rounded border border-slate-700 bg-slate-950 px-3 py-2 text-lg font-semibold text-white"
+              className="min-h-[1.75rem] max-h-32 flex-1 resize-y border-0 bg-transparent px-0 py-0.5 text-base font-semibold leading-snug text-white outline-none ring-0 placeholder:text-slate-600 focus:ring-0 disabled:opacity-60"
               value={item.title}
               maxLength={200}
-              rows={2}
+              rows={1}
               onChange={(e) => setItem({ ...item, title: e.target.value })}
               disabled={!editMode}
+              placeholder="Заголовок тикета"
             />
-            <div className="mt-1 text-xs text-slate-500">{Math.min(200, item.title?.length ?? 0)}/200</div>
           </div>
 
           <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40">
@@ -1079,53 +1019,6 @@ export function BacklogTicketView({
                   </div>
                 </div>
               )}
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40">
-                <button
-                  type="button"
-                  className="flex w-full touch-manipulation items-center justify-between gap-3 px-3 py-3 text-left sm:py-2.5"
-                  onClick={() => setReasoningOpen((o) => !o)}
-                  aria-expanded={reasoningOpen}
-                  id="reasoning-window-toggle"
-                >
-                  <span className="text-sm font-medium text-slate-200">Окно рассуждений</span>
-                  <span
-                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded border border-slate-700 text-xs text-slate-400 transition-transform duration-200 sm:size-7 ${
-                      reasoningOpen ? "rotate-180" : ""
-                    }`}
-                    aria-hidden
-                  >
-                    ▼
-                  </span>
-                </button>
-                {reasoningOpen ? (
-                  <div
-                    className="space-y-3 border-t border-slate-800 px-3 pb-4 pt-3"
-                    role="region"
-                    aria-labelledby="reasoning-window-toggle"
-                  >
-                    <p className="text-[11px] leading-snug text-slate-500">
-                      Журнал событий оркестратора (обновление ~2 с). Текст ответа агента по шагам дублируется в чате выше; здесь — ход
-                      процесса и вывод подтверждённых команд.
-                    </p>
-                    {run?.id ? (
-                      <div>
-                        <div className="text-xs font-medium text-slate-400">События запуска</div>
-                        <pre className="mt-1 max-h-[min(30vh,320px)] overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-black/30 p-2 font-mono text-[10px] text-slate-300">
-                          {reasoningLogText || "Пока нет записей…"}
-                        </pre>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">События появятся после запуска агента (есть run в БД).</p>
-                    )}
-                    <div>
-                      <div className="text-xs font-medium text-slate-400">Текущий вывод агента (последнее сообщение в чате)</div>
-                      <pre className="mt-1 max-h-[min(40vh,420px)] overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-black/30 p-2 font-mono text-[11px] text-slate-200">
-                        {lastAssistantContent.trim() || "—"}
-                      </pre>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
               <button
                 type="button"
                 className="w-full rounded border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-200 hover:bg-red-950/50 disabled:opacity-40"

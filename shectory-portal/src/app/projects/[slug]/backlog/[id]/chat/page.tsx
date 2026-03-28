@@ -41,6 +41,18 @@ function formatMsgTime(iso: string): string {
   }
 }
 
+type ChatAgentPresence = "thinking" | "idle" | "error";
+
+function looksLikeAssistantFailure(content: string): boolean {
+  const c = content;
+  const low = c.toLowerCase();
+  if (/e2big/i.test(c)) return true;
+  if (/\bspawn\s+e[a-z0-9_]+\b/i.test(low)) return true;
+  if (/ошибка\s+фонов(ого)?\s+агента/i.test(c)) return true;
+  if (/\bargument list too long\b/i.test(low)) return true;
+  return false;
+}
+
 function TicketChatFramePageInner({ params }: { params: { slug: string; id: string } }) {
   const WAITING_CODE = "[***waiting for answer***]";
   const sp = useSearchParams();
@@ -77,6 +89,42 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     const last = m[m.length - 1];
     return `${m.length}:${last.id}:${last.content.length}`;
   }, [session?.messages]);
+
+  const chatAgentPresence = useMemo((): ChatAgentPresence => {
+    if (loading) return "thinking";
+    if (err.trim()) return "error";
+    const msgs = session?.messages ?? [];
+    if (msgs.length === 0) return "idle";
+    const last = msgs[msgs.length - 1]!;
+    if (last.role === "user") return "thinking";
+    if (looksLikeAssistantFailure(last.content ?? "")) return "error";
+    return "idle";
+  }, [loading, err, session?.messages]);
+
+  const presenceUi = useMemo(() => {
+    switch (chatAgentPresence) {
+      case "thinking":
+        return {
+          emoji: "🤔",
+          label: "Агент отвечает — подождите новое сообщение в чате.",
+          short: "Ждём агента",
+        };
+      case "error":
+        return {
+          emoji: "🤦",
+          label:
+            "Похоже на сбой (ошибка процесса или ответа). Нового текста от агента без вашего действия обычно не будет — проверьте сообщение и при необходимости запустите снова или напишите в поддержку.",
+          short: "Ошибка",
+        };
+      default:
+        return {
+          emoji: "😴",
+          label:
+            "Ответ агента уже в чате; автоматически нового сообщения сейчас не ожидается. Если агент задал вопрос — ответьте сами кнопкой «Отправить».",
+          short: "Пауза",
+        };
+    }
+  }, [chatAgentPresence]);
 
   const loadTicket = useCallback(async () => {
     setErr("");
@@ -281,69 +329,89 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
 
       {err ? <div className="shrink-0 px-3 py-2 text-xs text-red-400">{err}</div> : null}
 
-      <div
-        ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 pb-4 text-sm [-webkit-overflow-scrolling:touch]"
-        onScroll={(e) => {
-          const t = e.currentTarget;
-          const dist = t.scrollHeight - t.scrollTop - t.clientHeight;
-          stickBottomRef.current = dist < 120;
-        }}
-      >
-        {hasMoreOlder ? (
-          <div className="mb-3 flex justify-center">
-            <button
-              type="button"
-              disabled={loadingOlder}
-              onClick={() => void loadOlder()}
-              className="rounded border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
-            >
-              {loadingOlder ? "Загрузка…" : "Ранее в переписке"}
-            </button>
-          </div>
-        ) : null}
-        {session?.messages?.length ? (
-          <div className="space-y-3">
-            {session.messages.map((m) => (
-              <div
-                key={m.id}
-                className={m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"}
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={listRef}
+          className="absolute inset-0 overflow-y-auto overscroll-y-contain p-3 pb-10 pr-14 text-sm [-webkit-overflow-scrolling:touch]"
+          onScroll={(e) => {
+            const t = e.currentTarget;
+            const dist = t.scrollHeight - t.scrollTop - t.clientHeight;
+            stickBottomRef.current = dist < 120;
+          }}
+        >
+          {hasMoreOlder ? (
+            <div className="mb-3 flex justify-center">
+              <button
+                type="button"
+                disabled={loadingOlder}
+                onClick={() => void loadOlder()}
+                className="rounded border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
               >
-                <div className="text-xs text-slate-500">
-                  {m.role === "user" ? (
-                    <>
-                      <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
-                      <span className="mx-1.5">·</span>
-                      <span>user</span>
-                    </>
+                {loadingOlder ? "Загрузка…" : "Ранее в переписке"}
+              </button>
+            </div>
+          ) : null}
+          {session?.messages?.length ? (
+            <div className="space-y-3">
+              {session.messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"}
+                >
+                  <div className="text-xs text-slate-500">
+                    {m.role === "user" ? (
+                      <>
+                        <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
+                        <span className="mx-1.5">·</span>
+                        <span>user</span>
+                      </>
+                    ) : (
+                      m.role
+                    )}
+                  </div>
+                  {m.role === "user" &&
+                  m.content.startsWith(TICKET_CONTEXT_HEAD) &&
+                  m.content.length > 1400 ? (
+                    <details className="mt-1 rounded border border-slate-700/60 bg-slate-950/40 p-2">
+                      <summary className="cursor-pointer select-none text-xs text-slate-400">
+                        Полный контекст тикета ({m.content.length.toLocaleString("ru-RU")} симв.) — развернуть
+                      </summary>
+                      <pre className="mt-2 max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm text-slate-200">
+                        {m.content}
+                      </pre>
+                    </details>
                   ) : (
-                    m.role
+                    <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
+                      {m.role !== "user" && m.content.includes(WAITING_CODE)
+                        ? m.content.replace(WAITING_CODE, "").trim()
+                        : m.content}
+                    </pre>
                   )}
                 </div>
-                {m.role === "user" &&
-                m.content.startsWith(TICKET_CONTEXT_HEAD) &&
-                m.content.length > 1400 ? (
-                  <details className="mt-1 rounded border border-slate-700/60 bg-slate-950/40 p-2">
-                    <summary className="cursor-pointer select-none text-xs text-slate-400">
-                      Полный контекст тикета ({m.content.length.toLocaleString("ru-RU")} симв.) — развернуть
-                    </summary>
-                    <pre className="mt-2 max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm text-slate-200">
-                      {m.content}
-                    </pre>
-                  </details>
-                ) : (
-                  <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
-                    {m.role !== "user" && m.content.includes(WAITING_CODE)
-                      ? m.content.replace(WAITING_CODE, "").trim()
-                      : m.content}
-                  </pre>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">Нет сообщений.</div>
+          )}
+        </div>
+        {sessionId ? (
+          <div
+            className="pointer-events-none absolute bottom-2 right-2 z-10"
+            role="status"
+            aria-live="polite"
+            aria-label={presenceUi.label}
+          >
+            <div
+              className="pointer-events-auto cursor-default rounded-md border border-slate-600/90 bg-slate-950/95 px-2 py-1.5 text-lg leading-none shadow-md backdrop-blur-sm"
+              title={presenceUi.label}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>{presenceUi.emoji}</span>
+                <span className="hidden text-[10px] font-medium text-slate-400 sm:inline">{presenceUi.short}</span>
+              </span>
+            </div>
           </div>
-        ) : (
-          <div className="text-sm text-slate-500">Нет сообщений.</div>
-        )}
+        ) : null}
       </div>
 
       <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">

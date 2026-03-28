@@ -364,8 +364,33 @@ export function BacklogPanel({
                   {b.isPaused && <span className="ml-2 rounded bg-amber-900/40 px-2 py-0.5 text-[11px] text-amber-300">paused</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <div className="font-medium text-slate-100">{b.title}</div>
-                  {b.description && <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{b.description}</div>}
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-slate-100">{b.title}</div>
+                      {b.description && <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{b.description}</div>}
+                    </div>
+                    <Link
+                      href={`/projects/${projectSlug}/backlog/${b.id}`}
+                      className="shrink-0 rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                      title="Открыть тикет и редактировать"
+                      aria-label="Редактировать тикет"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="size-4"
+                        aria-hidden
+                      >
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        <path d="m15 5 4 4" />
+                      </svg>
+                    </Link>
+                  </div>
                 </td>
                 <td className="px-3 py-2">
                   <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">{b.status}</span>
