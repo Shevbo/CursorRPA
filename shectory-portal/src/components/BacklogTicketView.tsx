@@ -57,6 +57,7 @@ export function BacklogTicketView({
   const [dismissedCmds, setDismissedCmds] = useState<string[]>([]);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
+  const [ticketDetailsOpen, setTicketDetailsOpen] = useState(false);
   const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
   const [clockTick, setClockTick] = useState(0);
   const autoShellInFlight = useRef(false);
@@ -678,117 +679,140 @@ export function BacklogTicketView({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs text-slate-500">Status</span>
-            <select
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-              value={item.status}
-              onChange={(e) => setItem({ ...item, status: e.target.value })}
-            >
-              {BACKLOG_ITEM_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs text-slate-500">Priority</span>
-            <select
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-              value={item.priority}
-              onChange={(e) => setItem({ ...item, priority: parseInt(e.target.value, 10) })}
-            >
-              {[1, 2, 3, 4, 5].map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs text-slate-500">Sprint status</span>
-            <select
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-              value={item.sprintStatus}
-              onChange={(e) => setItem({ ...item, sprintStatus: e.target.value })}
-            >
-              {BACKLOG_SPRINT_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40">
           <button
             type="button"
-            className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
-            disabled={saving}
-            onClick={() => void save({ status: item.status, priority: item.priority, sprintStatus: item.sprintStatus })}
+            className="flex w-full touch-manipulation items-center justify-between gap-3 px-3 py-3 text-left sm:py-2.5"
+            onClick={() => setTicketDetailsOpen((o) => !o)}
+            aria-expanded={ticketDetailsOpen}
+            id="ticket-details-toggle"
           >
-            Применить статус/приоритет
+            <span className="text-sm font-medium text-slate-200">Детали</span>
+            <span
+              className={`inline-flex size-8 shrink-0 items-center justify-center rounded border border-slate-700 text-xs text-slate-400 transition-transform duration-200 sm:size-7 ${
+                ticketDetailsOpen ? "rotate-180" : ""
+              }`}
+              aria-hidden
+            >
+              ▼
+            </span>
           </button>
-          {inSprint && sprintLink && (
-            <Link className="rounded border border-emerald-900 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-900/20" href={sprintLink}>
-              Открыть спринт #{item.sprintNumber}
-            </Link>
-          )}
-        </div>
+          {ticketDetailsOpen ? (
+            <div className="space-y-4 border-t border-slate-800 px-3 pb-4 pt-3" role="region" aria-labelledby="ticket-details-toggle">
+              <div className="grid gap-3 lg:grid-cols-3">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-xs text-slate-500">Status</span>
+                  <select
+                    className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
+                    value={item.status}
+                    onChange={(e) => setItem({ ...item, status: e.target.value })}
+                  >
+                    {BACKLOG_ITEM_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-xs text-slate-500">Priority</span>
+                  <select
+                    className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
+                    value={item.priority}
+                    onChange={(e) => setItem({ ...item, priority: parseInt(e.target.value, 10) })}
+                  >
+                    {[1, 2, 3, 4, 5].map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-xs text-slate-500">Sprint status</span>
+                  <select
+                    className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
+                    value={item.sprintStatus}
+                    onChange={(e) => setItem({ ...item, sprintStatus: e.target.value })}
+                  >
+                    {BACKLOG_SPRINT_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-slate-500">Описание</div>
-              <button
-                type="button"
-                className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
-                disabled={generating}
-                onClick={() => void generateEngineeringPrompt()}
-                title="Сгенерировать подробный инженерный промпт и сохранить в поле промпта/ТЗ"
-              >
-                {generating ? "…" : "Создать инженерный промпт"}
-              </button>
-            </div>
-            {promptRun && (
-              <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-xs text-slate-300">
-                <div className="flex items-center justify-between gap-2">
-                  <span>Генерация промпта</span>
-                  <span className="font-mono text-slate-400">{promptRunConnected ? "live" : "…"}</span>
-                </div>
-                <div className="mt-2 space-y-1">
-                  {(promptRun.steps ?? []).map((s) => (
-                    <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-black/10 px-2 py-1">
-                      <span className="text-slate-200">{s.title}</span>
-                      <span className={s.status === "done" ? "text-emerald-300" : s.status === "running" ? "text-amber-200" : s.status === "failed" ? "text-red-300" : "text-slate-400"}>
-                        {s.status}
-                      </span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
+                  disabled={saving}
+                  onClick={() => void save({ status: item.status, priority: item.priority, sprintStatus: item.sprintStatus })}
+                >
+                  Применить статус/приоритет
+                </button>
+                {inSprint && sprintLink && (
+                  <Link className="rounded border border-emerald-900 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-900/20" href={sprintLink}>
+                    Открыть спринт #{item.sprintNumber}
+                  </Link>
+                )}
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-slate-500">Описание</div>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
+                      disabled={generating}
+                      onClick={() => void generateEngineeringPrompt()}
+                      title="Сгенерировать подробный инженерный промпт и сохранить в поле промпта/ТЗ"
+                    >
+                      {generating ? "…" : "Создать инженерный промпт"}
+                    </button>
+                  </div>
+                  {promptRun && (
+                    <div className="mt-2 rounded border border-slate-800 bg-black/20 p-2 text-xs text-slate-300">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Генерация промпта</span>
+                        <span className="font-mono text-slate-400">{promptRunConnected ? "live" : "…"}</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {(promptRun.steps ?? []).map((s) => (
+                          <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-black/10 px-2 py-1">
+                            <span className="text-slate-200">{s.title}</span>
+                            <span className={s.status === "done" ? "text-emerald-300" : s.status === "running" ? "text-amber-200" : s.status === "failed" ? "text-red-300" : "text-slate-400"}>
+                              {s.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
+                  <textarea
+                    className="mt-1 min-h-[140px] w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                    value={item.description ?? ""}
+                    onChange={(e) => setItem({ ...item, description: e.target.value || null })}
+                    placeholder="Описание (необязательно)"
+                    disabled={!editMode}
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Промпт / ТЗ для агента</div>
+                  <textarea
+                    className="mt-1 min-h-[140px] w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200"
+                    value={item.descriptionPrompt ?? ""}
+                    onChange={(e) => setItem({ ...item, descriptionPrompt: e.target.value })}
+                    placeholder="Промпт…"
+                    disabled={!editMode}
+                  />
                 </div>
               </div>
-            )}
-            <textarea
-              className="mt-1 min-h-[140px] w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
-              value={item.description ?? ""}
-              onChange={(e) => setItem({ ...item, description: e.target.value || null })}
-              placeholder="Описание (необязательно)"
-              disabled={!editMode}
-            />
-          </div>
-          <div>
-            <div className="text-xs text-slate-500">Промпт / ТЗ для агента</div>
-            <textarea
-              className="mt-1 min-h-[140px] w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-200"
-              value={item.descriptionPrompt ?? ""}
-              onChange={(e) => setItem({ ...item, descriptionPrompt: e.target.value })}
-              placeholder="Промпт…"
-              disabled={!editMode}
-            />
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {needsStart && !inSprint && (
