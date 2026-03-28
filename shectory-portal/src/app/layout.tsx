@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   description: "Платформа Shevelev's Factory",
 };
 
+export const viewport = {
+  width: "device-width" as const,
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover" as const,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">

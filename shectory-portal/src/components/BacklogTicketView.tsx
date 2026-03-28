@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BacklogItem, ChatMessage, ChatSession, Sprint } from "@prisma/client";
 import { BACKLOG_ITEM_STATUSES, BACKLOG_SPRINT_STATUSES } from "@/lib/backlog-constants";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
@@ -11,6 +11,9 @@ type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
 type ItemWithSprint = BacklogItem & { sprint?: Sprint | null };
 
 type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
+
+const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
+const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
 function ticketIdLabel(item: ItemWithSprint) {
   return item.ticketKey || item.id.slice(0, 8);
@@ -54,6 +57,11 @@ export function BacklogTicketView({
   const [dismissedCmds, setDismissedCmds] = useState<string[]>([]);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
+  const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
+  const [clockTick, setClockTick] = useState(0);
+  const autoShellInFlight = useRef(false);
+  /** Не крутить авто-ОК в цикл при ошибке одной и той же команды. */
+  const lastAutoShellFailCmd = useRef<string | null>(null);
 
   const inSprint = Boolean(item.sprintId);
 
@@ -167,8 +175,36 @@ export function BacklogTicketView({
   }, [clockSide, inSprint, session?.id]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTO_SHELL_UNTIL_KEY);
+      if (!raw) return;
+      const t = parseInt(raw, 10);
+      if (Number.isNaN(t) || t < Date.now()) {
+        localStorage.removeItem(AUTO_SHELL_UNTIL_KEY);
+        return;
+      }
+      setAutoShellUntil(t);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (autoShellUntil !== null && autoShellUntil < Date.now()) {
+      localStorage.removeItem(AUTO_SHELL_UNTIL_KEY);
+      setAutoShellUntil(null);
+    }
+  }, [autoShellUntil, clockTick]);
+
+  useEffect(() => {
     // New assistant message may contain new approval requests.
     setDismissedCmds([]);
+    lastAutoShellFailCmd.current = null;
   }, [lastAssistantContent]);
 
   function formatClock(totalSeconds: number) {
@@ -375,31 +411,68 @@ export function BacklogTicketView({
     }
   }
 
-  async function execCommand(command: string) {
-    if (!run?.id) return;
-    const cmd = command.trim();
-    if (!cmd) return;
-    setCmdRunning(true);
-    setErr("");
-    try {
-      const r = await fetch(`/api/agent-runs/${encodeURIComponent(run.id)}/exec`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const j = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      setCmdInput("");
-      setProposedCmds((prev) => prev.filter((c) => c.trim() !== cmd));
-      setDismissedCmds((prev) => [...prev, cmd]);
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCmdRunning(false);
-    }
-  }
+  const execCommand = useCallback(
+    async (command: string) => {
+      const cmd = command.trim();
+      if (!cmd) return;
+      if (!run?.id && !session?.id) {
+        setErr("Нет сессии чата для выполнения команды (откройте ленту под тикетом).");
+        return;
+      }
+      setCmdRunning(true);
+      setErr("");
+      try {
+        let r: Response;
+        if (run?.id) {
+          r = await fetch(`/api/agent-runs/${encodeURIComponent(run.id)}/exec`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: cmd }),
+          });
+        } else {
+          r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(session!.id)}/exec`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: cmd }),
+          });
+        }
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+        setCmdInput("");
+        setProposedCmds((prev) => prev.filter((c) => c.trim() !== cmd));
+        setDismissedCmds((prev) => [...prev, cmd]);
+        await reload();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+        try {
+          const raw = localStorage.getItem(AUTO_SHELL_UNTIL_KEY);
+          const t = raw ? parseInt(raw, 10) : 0;
+          if (t > Date.now()) lastAutoShellFailCmd.current = cmd;
+        } catch {
+          /* ignore */
+        }
+      } finally {
+        setCmdRunning(false);
+      }
+    },
+    [run?.id, session?.id, reload]
+  );
+
+  const autoShellValid = autoShellUntil !== null && Date.now() < autoShellUntil;
+
+  useEffect(() => {
+    if (inSprint || !autoShellValid || cmdRunning || approvalCmds.length === 0) return;
+    if (!run?.id && !session?.id) return;
+    if (autoShellInFlight.current) return;
+    const cmd = approvalCmds[0];
+    if (cmd === lastAutoShellFailCmd.current) return;
+    autoShellInFlight.current = true;
+    void execCommand(cmd).finally(() => {
+      autoShellInFlight.current = false;
+    });
+  }, [approvalCmds, autoShellValid, cmdRunning, execCommand, inSprint, run?.id, session?.id]);
 
   async function togglePause() {
     setErr("");
@@ -541,8 +614,8 @@ export function BacklogTicketView({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-5">
+    <div className="max-w-full space-y-4 overflow-x-hidden [-webkit-tap-highlight-color:transparent] sm:overflow-x-visible">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 sm:p-5">
         <div className="space-y-3">
           <div>
             <div className="text-xs text-slate-500">Ticket</div>
@@ -767,28 +840,58 @@ export function BacklogTicketView({
       </div>
 
       <div className="rounded-xl border border-slate-800 bg-black/20">
-        <div className="border-b border-slate-800 p-4">
-          <div className="flex items-center justify-between gap-3">
+        <div className="border-b border-slate-800 p-3 sm:p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="text-sm font-medium text-white">Лента под тикетом</div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <div
-                className={`rounded border px-2 py-1 ${
-                  clockSide === "agent"
-                    ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
-                    : "border-slate-700 bg-slate-900/20 text-slate-300"
-                }`}
-              >
-                Агент {formatClock(agentClockSec)}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <div
+                  className={`touch-manipulation rounded border px-2 py-2 sm:py-1 ${
+                    clockSide === "agent"
+                      ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
+                      : "border-slate-700 bg-slate-900/20 text-slate-300"
+                  }`}
+                >
+                  Агент {formatClock(agentClockSec)}
+                </div>
+                <div
+                  className={`touch-manipulation rounded border px-2 py-2 sm:py-1 ${
+                    clockSide === "user"
+                      ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
+                      : "border-slate-700 bg-slate-900/20 text-slate-300"
+                  }`}
+                >
+                  Вы {formatClock(userClockSec)}
+                </div>
               </div>
-              <div
-                className={`rounded border px-2 py-1 ${
-                  clockSide === "user"
-                    ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
-                    : "border-slate-700 bg-slate-900/20 text-slate-300"
-                }`}
-              >
-                Вы {formatClock(userClockSec)}
-              </div>
+              {!inSprint && session?.id ? (
+                <label className="flex max-w-full cursor-pointer touch-manipulation items-start gap-2 rounded border border-slate-800 bg-slate-950/40 p-2 text-[11px] leading-snug text-slate-400 sm:max-w-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-[1.15rem] shrink-0 accent-amber-600"
+                    checked={autoShellValid}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        const until = Date.now() + AUTO_SHELL_MS;
+                        localStorage.setItem(AUTO_SHELL_UNTIL_KEY, String(until));
+                        setAutoShellUntil(until);
+                        lastAutoShellFailCmd.current = null;
+                      } else {
+                        localStorage.removeItem(AUTO_SHELL_UNTIL_KEY);
+                        setAutoShellUntil(null);
+                      }
+                    }}
+                  />
+                  <span>
+                    Авто-ОК на shell-команды на 2 часа
+                    {autoShellValid && autoShellUntil ? (
+                      <span className="mt-0.5 block font-mono text-[10px] text-slate-500">
+                        до {new Date(autoShellUntil).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              ) : null}
             </div>
           </div>
           {inSprint ? (
@@ -840,30 +943,32 @@ export function BacklogTicketView({
                 </div>
               </div>
             )}
-            <div className="h-[38vh] min-h-[260px]">
+            <div className="relative z-0 isolate min-h-[220px] h-[32vh] sm:h-[38vh] sm:min-h-[260px]">
               <iframe
-                className="h-full w-full"
+                className="h-full w-full touch-manipulation border-0"
                 src={`/projects/${encodeURIComponent(projectSlug)}/backlog/${encodeURIComponent(itemId)}/chat?sessionId=${encodeURIComponent(session.id)}`}
                 title="Ticket chat"
               />
             </div>
-            <div className="space-y-2 border-t border-slate-800 px-3 py-3">
+            <div className="relative z-20 space-y-2 border-t border-slate-800 bg-slate-950/98 px-2 py-3 sm:px-3">
               {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
-                <div className="rounded border border-amber-900/60 bg-amber-900/10 p-3">
+                <div className="rounded border border-amber-900/60 bg-amber-900/10 p-3 shadow-lg shadow-black/40">
                   <div className="text-xs font-medium text-amber-200">Требуется подтверждение команды</div>
                   <div className="mt-1 text-[11px] leading-snug text-amber-200/80">
-                    Агент запросил согласование. Подтвердите команду кнопкой “ОК” или отклоните “Отмена”.
+                    Агент запросил согласование. Подтвердите команду кнопкой «ОК» или отклоните «Отмена».
                   </div>
 
                   {approvalCmds.length > 0 && (
                     <div className="mt-2 space-y-2">
                       {approvalCmds.map((c, idx) => (
                         <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
-                          <pre className="whitespace-pre-wrap font-mono text-[11px] text-slate-200">{c}</pre>
-                          <div className="mt-2 flex gap-2">
+                          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-slate-200 sm:max-h-none">
+                            {c}
+                          </pre>
+                          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                             <button
                               type="button"
-                              className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
+                              className="touch-manipulation min-h-[44px] min-w-[44px] rounded bg-amber-600 px-4 py-3 text-sm font-medium text-black active:bg-amber-500 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-2 sm:text-xs"
                               disabled={cmdRunning}
                               onClick={() => void execCommand(c)}
                             >
@@ -871,7 +976,7 @@ export function BacklogTicketView({
                             </button>
                             <button
                               type="button"
-                              className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
+                              className="touch-manipulation min-h-[44px] min-w-[44px] rounded border border-slate-700 px-4 py-3 text-sm text-slate-200 active:bg-slate-800 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-2 sm:text-xs"
                               disabled={cmdRunning}
                               onClick={() => setDismissedCmds((prev) => [...prev, c])}
                             >
@@ -885,17 +990,20 @@ export function BacklogTicketView({
 
                   <div className="mt-3">
                     <div className="text-[11px] text-slate-400">Или выполните любую команду вручную (с подтверждением):</div>
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                       <input
-                        className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-200"
+                        className="min-h-[44px] flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-200 sm:min-h-0 sm:text-xs"
                         value={cmdInput}
                         onChange={(e) => setCmdInput(e.target.value)}
                         placeholder="bash -lc …"
                         disabled={cmdRunning}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
                       />
                       <button
                         type="button"
-                        className="rounded bg-amber-600 px-3 py-2 text-xs font-medium text-black disabled:opacity-50"
+                        className="touch-manipulation min-h-[44px] shrink-0 rounded bg-amber-600 px-4 py-3 text-sm font-medium text-black disabled:opacity-50 sm:min-h-0 sm:px-3 sm:py-2 sm:text-xs"
                         disabled={cmdRunning || !cmdInput.trim()}
                         onClick={() => void execCommand(cmdInput)}
                       >

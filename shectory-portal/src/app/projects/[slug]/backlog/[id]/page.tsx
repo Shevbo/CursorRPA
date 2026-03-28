@@ -47,7 +47,7 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
     : null;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6">
+    <main className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link href={`/projects/${project.slug}/control`} className="text-blue-400 hover:underline">
