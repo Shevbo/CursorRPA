@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
+import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
@@ -15,7 +16,7 @@ async function main() {
     data: { sessionId, role: "assistant", content: "⏳ Агент запущен. Думаю над задачей…" },
   });
 
-  const { ok, stdout, stderr } = await runAgentPrompt(workspacePath, prompt, timeoutMs);
+  const { ok, stdout, stderr } = await runAgentPrompt(workspacePath, shectoryWikiPreamble() + prompt, timeoutMs);
   const reply = (ok ? stdout : stderr || stdout).trim() || "(пустой ответ agent)";
 
   await prisma.chatMessage.create({

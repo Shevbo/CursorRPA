@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
+import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 const WAITING_CODE = "[***waiting for answer***]";
@@ -49,6 +50,7 @@ function hashPrompt(s) {
 
 function ruBlock() {
   return (
+    shectoryWikiPreamble() +
     "\n\n━━ ЯЗЫК И ФОРМАТ ━━\n" +
     "- Весь связный текст в ответе — ТОЛЬКО на русском.\n" +
     "- Не используй английские вводные.\n" +

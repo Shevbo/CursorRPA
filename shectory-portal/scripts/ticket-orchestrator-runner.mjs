@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
+import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
@@ -91,7 +92,7 @@ async function runWithHeartbeats(sessionId, label, workspacePath, prompt, timeou
   }, tickMs);
 
   try {
-    return await runAgentPrompt(workspacePath, prompt + RU_BLOCK, timeoutMs);
+    return await runAgentPrompt(workspacePath, shectoryWikiPreamble() + prompt + RU_BLOCK, timeoutMs);
   } finally {
     clearInterval(interval);
   }

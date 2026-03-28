@@ -1,10 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
+import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
 const RU_TAIL =
-  "\n\n━━ Язык ответа ━━\nОтвечай по-русски (кроме имён файлов, команд терминала, идентификаторов API и фрагментов кода). Не начинай ответ с английских вводных фраз.\n" +
+  "\n\n━━ Стандарты Shectory ━━\n" +
+  "В начале этого запроса при наличии файла подставлен текст **Shectory Wikipedia** (docs/shectory-wikipedia.md в корне репозитория). Следуй ему при работе над продуктом; если пользователь пишет «читай википедию shectory» — явно опирайся на этот свод.\n" +
+  "━━ Язык ответа ━━\nОтвечай по-русски (кроме имён файлов, команд терминала, идентификаторов API и фрагментов кода). Не начинай ответ с английских вводных фраз.\n" +
   "━━ Ожидание ответа ━━\n" +
   "Если тебе нужно получить от человека ответ/уточнение (вопрос, выбор вариантов, согласование), в КОНЦЕ сообщения добавь ровно одну строку: [***waiting for answer***] и остановись (не продолжай решение до ответа пользователя).\n" +
   "━━ Терминальные команды в Shectory UI ━━\n" +
@@ -81,7 +84,11 @@ async function main() {
     }
   }
 
-  const { ok, stdout, stderr } = await runAgentPrompt(workspacePath, composed + RU_TAIL, timeoutMs);
+  const { ok, stdout, stderr } = await runAgentPrompt(
+    workspacePath,
+    shectoryWikiPreamble() + composed + RU_TAIL,
+    timeoutMs
+  );
   const reply = (ok ? stdout : stderr || stdout).trim() || "(пустой ответ agent)";
 
   await prisma.chatMessage.create({

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
+import { Readable } from "node:stream";
 
 const HOME = process.env.HOME ?? "/home/shectory";
 const AGENT_BIN = process.env.AGENT_BIN ?? `${HOME}/.local/bin/agent`;
@@ -24,6 +25,47 @@ export function loadApiKey() {
 }
 
 /**
+ * Урезанное окружение для дочернего процесса — снижает риск E2BIG из-за гигантского process.env.
+ */
+function slimAgentEnv() {
+  const allow = new Set([
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    "DISPLAY",
+    "XDG_RUNTIME_DIR",
+    "TMPDIR",
+    "TEMP",
+    "TZ",
+    "CURSOR_API_KEY",
+    "AGENT_BIN",
+    "NODE_OPTIONS",
+    "CI",
+    "FORCE_COLOR",
+    "NO_COLOR",
+  ]);
+  const env = {
+    HOME,
+    PATH: `${HOME}/.local/bin:${process.env.PATH || "/usr/bin:/bin"}`,
+  };
+  for (const k of allow) {
+    const v = process.env[k];
+    if (v !== undefined) env[k] = v;
+  }
+  for (const k of Object.keys(process.env)) {
+    if (k.startsWith("CURSOR_") && env[k] === undefined) env[k] = process.env[k];
+  }
+  return env;
+}
+
+/**
+ * Промпт в stdin (аргумент «-»), а не в argv — иначе длинный контекст даёт spawn E2BIG.
  * @param {string} workspacePath
  * @param {string} prompt
  * @param {number} timeoutMs
@@ -31,8 +73,8 @@ export function loadApiKey() {
  */
 export function runAgentPrompt(workspacePath, prompt, timeoutMs) {
   loadApiKey();
-  const env = { ...process.env, HOME, PATH: `${HOME}/.local/bin:${process.env.PATH ?? ""}` };
-  const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath, prompt];
+  const env = slimAgentEnv();
+  const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath, "-"];
   return new Promise((resolve) => {
     const child = spawn(AGENT_BIN, args, { env, shell: false });
     let stdout = "";
@@ -52,6 +94,19 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs) {
       }, 5000);
       resolve({ ok: false, stdout, stderr: stderr + "\n[timeout]" });
     }, timeoutMs);
+
+    const payload = Buffer.from(prompt ?? "", "utf8");
+    const src = Readable.from([payload]);
+    src.on("error", (e) => {
+      clearTimeout(t);
+      resolve({ ok: false, stdout, stderr: stderr + String(e) });
+    });
+    child.stdin?.on("error", (e) => {
+      clearTimeout(t);
+      resolve({ ok: false, stdout, stderr: stderr + String(e) });
+    });
+    src.pipe(child.stdin);
+
     child.stdout?.on("data", (d) => (stdout += d.toString()));
     child.stderr?.on("data", (d) => (stderr += d.toString()));
     child.on("close", (code) => {

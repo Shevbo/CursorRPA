@@ -946,9 +946,11 @@ export function BacklogTicketView({
     </div>
   );
 
+  const layoutExpanded = ticketDetailsOpen || ticketManagementOpen;
+
   const chatMiddleSection =
     !inSprint && session?.id ? (
-      <div className="flex min-h-0 min-w-0 flex-[5] flex-col overflow-hidden border-x border-slate-800 bg-black/20">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-x border-slate-800 bg-black/20">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 px-2 py-1.5">
           <span className="text-sm font-medium text-white">Чат с агентом</span>
           {agentWaiting ? (
@@ -1038,7 +1040,7 @@ export function BacklogTicketView({
         </div>
       </div>
     ) : (
-      <div className="flex min-h-0 flex-[5] flex-col items-center justify-center overflow-hidden border-x border-slate-800 bg-black/20 px-4 text-center text-sm text-slate-500">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden border-x border-slate-800 bg-black/20 px-4 text-center text-sm text-slate-500">
         {inSprint ? (
           <>
             Чат отключён — тикет в спринте.
@@ -1059,100 +1061,115 @@ export function BacklogTicketView({
 
   const chatBottomSection =
     !inSprint && session?.id ? (
-      <div className="flex min-h-0 min-w-0 flex-[2] flex-col overflow-hidden border-t border-slate-800 bg-slate-950/98">
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <section
+        className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-slate-800 bg-slate-950/98 ${
+          layoutExpanded ? "min-h-[10.5rem] shrink-0" : "h-[20%] min-h-[7.5rem] shrink-0"
+        }`}
+      >
+        <div className="min-h-0 min-w-0 flex flex-1 flex-col">
           {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
-            <div className="rounded border border-amber-900/60 bg-amber-900/10 p-2">
-              <div className="text-[11px] font-medium text-amber-200">Подтверждение команды</div>
-              {approvalCmds.length > 0 && (
-                <div className="mt-2 space-y-2">
-                  {approvalCmds.map((c, idx) => (
-                    <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
-                      <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-slate-200">{c}</pre>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
-                          disabled={cmdRunning}
-                          onClick={() => void execCommand(c)}
-                        >
-                          ОК
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
-                          disabled={cmdRunning}
-                          onClick={() => setDismissedCmds((prev) => [...prev, c])}
-                        >
-                          Отмена
-                        </button>
+            <div className="max-h-[38%] shrink-0 overflow-y-auto border-b border-slate-800/80 px-2 py-1.5">
+              <div className="rounded border border-amber-900/60 bg-amber-900/10 p-2">
+                <div className="text-[11px] font-medium text-amber-200">Подтверждение команды</div>
+                {approvalCmds.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {approvalCmds.map((c, idx) => (
+                      <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
+                        <pre className="max-h-20 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-slate-200">{c}</pre>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
+                            disabled={cmdRunning}
+                            onClick={() => void execCommand(c)}
+                          >
+                            ОК
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
+                            disabled={cmdRunning}
+                            onClick={() => setDismissedCmds((prev) => [...prev, c])}
+                          >
+                            Отмена
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <input
+                    className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                    value={cmdInput}
+                    onChange={(e) => setCmdInput(e.target.value)}
+                    placeholder="bash -lc …"
+                    disabled={cmdRunning}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
+                    disabled={cmdRunning || !cmdInput.trim()}
+                    onClick={() => void execCommand(cmdInput)}
+                  >
+                    ОК
+                  </button>
                 </div>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
-                  value={cmdInput}
-                  onChange={(e) => setCmdInput(e.target.value)}
-                  placeholder="bash -lc …"
-                  disabled={cmdRunning}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
-                  disabled={cmdRunning || !cmdInput.trim()}
-                  onClick={() => void execCommand(cmdInput)}
-                >
-                  ОК
-                </button>
               </div>
             </div>
           )}
-        </div>
-        <div className="shrink-0 border-t border-slate-800 p-2">
-          <p className="mb-1 text-[10px] leading-snug text-slate-500">
-            Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
-            <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля.
-          </p>
-          <div className="flex gap-2">
-            <textarea
-              className="min-h-[2.5rem] max-h-24 min-w-0 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
-              placeholder="Сообщение агенту…"
-              rows={2}
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendToAgent();
-                }
-              }}
-              disabled={loadingChat || !session?.id}
-            />
-            <button
-              type="button"
-              className="h-fit shrink-0 self-end rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-              disabled={loadingChat || !session?.id || !chatInput.trim()}
-              onClick={() => void sendToAgent()}
-            >
-              {loadingChat ? "…" : "Отправить"}
-            </button>
+          <div className="flex min-h-0 flex-1 flex-col px-2 py-1.5">
+            <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
+              Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
+              <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля.
+            </p>
+            <div className="flex min-h-0 flex-1 gap-2">
+              <textarea
+                className="min-h-0 w-0 flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
+                placeholder="Сообщение агенту…"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendToAgent();
+                  }
+                }}
+                disabled={loadingChat || !session?.id}
+              />
+              <button
+                type="button"
+                className="h-fit shrink-0 self-end rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                disabled={loadingChat || !session?.id || !chatInput.trim()}
+                onClick={() => void sendToAgent()}
+              >
+                {loadingChat ? "…" : "Отправить"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
     ) : (
-      <div className="flex min-h-0 flex-[2] flex-col border-t border-slate-800 bg-slate-950/90" />
+      <section
+        className={`border-t border-slate-800 bg-slate-950/90 ${layoutExpanded ? "min-h-[4rem] shrink-0" : "h-[20%] min-h-[4rem] shrink-0"}`}
+      />
     );
 
   return (
-    <div className="max-w-full h-full min-h-0 overflow-hidden [-webkit-tap-highlight-color:transparent]">
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/30">
-        <section className="flex min-h-0 flex-[3] flex-col overflow-y-auto overflow-x-hidden border-b border-slate-800">
+    <div className="max-w-full min-h-0 w-full [-webkit-tap-highlight-color:transparent]">
+      <div
+        className={`flex w-full min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/30 ${
+          layoutExpanded ? "min-h-[calc(100dvh-5.5rem)]" : "h-[calc(100dvh-5.5rem)]"
+        }`}
+      >
+        <section
+          className={`shrink-0 overflow-y-auto overflow-x-hidden border-b border-slate-800 ${
+            layoutExpanded ? "" : "max-h-[30%]"
+          }`}
+        >
           {ticketTopSection}
         </section>
         {chatMiddleSection}
