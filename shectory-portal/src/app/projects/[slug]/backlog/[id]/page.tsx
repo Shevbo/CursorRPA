@@ -25,11 +25,26 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
       chats: {
         orderBy: { updatedAt: "desc" },
         take: 1,
-        include: { messages: { orderBy: { createdAt: "asc" } } },
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 200,
+          },
+        },
       },
     },
   });
   if (!item || item.projectId !== project.id) notFound();
+
+  const rawSession = item.chats[0] ?? null;
+  const initialSession = rawSession
+    ? {
+        ...rawSession,
+        messages: [...rawSession.messages].sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+        ),
+      }
+    : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6">
@@ -53,7 +68,7 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
         projectAiContext={project.aiContext}
         projectTechStack={project.techStack.map((t) => t.name)}
         initialItem={item as unknown as Record<string, unknown>}
-        initialSession={(item.chats[0] ?? null) as unknown as Record<string, unknown> | null}
+        initialSession={initialSession as unknown as Record<string, unknown> | null}
       />
     </main>
   );

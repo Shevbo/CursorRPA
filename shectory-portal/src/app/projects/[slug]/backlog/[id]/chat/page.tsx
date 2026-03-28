@@ -1,12 +1,29 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
+import {
+  TICKET_CONTEXT_HEAD,
+  buildFollowUpTicketUserPayload,
+  buildFullTicketContextText,
+  stripTicketContextRefreshTag,
+  userRequestedTicketContextRefresh,
+} from "@/lib/ticket-chat-context";
 
 type Msg = { id: string; role: string; content: string; createdAt: string };
-type Session = { id: string; messages: Msg[] };
+type Session = { id: string; title?: string; messages: Msg[] };
 type Ticket = { id: string; ticketKey?: string | null; title: string; description?: string | null; descriptionPrompt?: string };
+
+const PAGE_LIMIT = 80;
+
+function mergeOlderPrefixWithLatestTail(prev: Msg[], tail: Msg[]): Msg[] {
+  if (tail.length === 0) return prev;
+  if (prev.length === 0) return tail;
+  const t0 = new Date(tail[0].createdAt).getTime();
+  const prefix = prev.filter((m) => new Date(m.createdAt).getTime() < t0);
+  return [...prefix, ...tail];
+}
 
 function formatMsgTime(iso: string): string {
   try {
@@ -21,13 +38,24 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const sp = useSearchParams();
   const sessionId = useMemo(() => (sp.get("sessionId") || "").trim(), [sp]);
   const [session, setSession] = useState<Session | null>(null);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const loadInFlightRef = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const stickBottomRef = useRef(true);
+  /** Пользователь подгружал «Ранее» — нельзя затирать историю обычным load(tail). */
+  const historyExpandedRef = useRef(false);
 
   const ticketLabel = ticket?.ticketKey?.trim() || params.id.slice(0, 8);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
 
   const loadTicket = useCallback(async () => {
     setErr("");
@@ -41,22 +69,81 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const load = useCallback(async () => {
     if (!sessionId) return;
     setErr("");
-    const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(sessionId)}`, { credentials: "include" });
+    const r = await fetch(
+      `/api/project/chat-sessions/${encodeURIComponent(sessionId)}?limit=${PAGE_LIMIT}`,
+      { credentials: "include" }
+    );
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       setErr((j as { error?: string }).error ?? `HTTP ${r.status}`);
       return;
     }
-    setSession((j as { session: Session }).session);
+    const payload = j as {
+      session?: Session;
+      hasMoreOlder?: boolean;
+    };
+    if (payload.session) {
+      if (historyExpandedRef.current) {
+        setSession((prev) =>
+          prev
+            ? { ...prev, messages: mergeOlderPrefixWithLatestTail(prev.messages, payload.session!.messages) }
+            : payload.session!
+        );
+      } else {
+        setSession(payload.session);
+      }
+      setHasMoreOlder(Boolean(payload.hasMoreOlder));
+      stickBottomRef.current = true;
+    }
   }, [sessionId]);
+
+  const loadOlder = useCallback(async () => {
+    if (!sessionId || !session?.messages?.length || loadingOlder || !hasMoreOlder) return;
+    const oldest = session.messages[0];
+    if (!oldest?.createdAt) return;
+    setLoadingOlder(true);
+    const el = listRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    try {
+      const r = await fetch(
+        `/api/project/chat-sessions/${encodeURIComponent(sessionId)}?limit=${PAGE_LIMIT}&before=${encodeURIComponent(oldest.createdAt)}`,
+        { credentials: "include" }
+      );
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return;
+      const payload = j as { session?: Session; hasMoreOlder?: boolean };
+      const olderMsgs = payload.session?.messages ?? [];
+      if (olderMsgs.length === 0) {
+        setHasMoreOlder(false);
+        return;
+      }
+      historyExpandedRef.current = true;
+      setSession((prev) =>
+        prev
+          ? { ...prev, messages: [...olderMsgs.filter((m) => !prev.messages.some((x) => x.id === m.id)), ...prev.messages] }
+          : prev
+      );
+      setHasMoreOlder(Boolean(payload.hasMoreOlder));
+      requestAnimationFrame(() => {
+        const node = listRef.current;
+        if (node) node.scrollTop = node.scrollHeight - prevHeight;
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [sessionId, session?.messages, loadingOlder, hasMoreOlder]);
 
   useEffect(() => {
     void load();
     void loadTicket();
   }, [load, loadTicket]);
 
-  // Дёргаем загрузку сессии, чтобы «⏳-сообщения» оркестратора/агента появлялись в ленте
-  // без ручного обновления окна iframe.
+  useEffect(() => {
+    if (stickBottomRef.current) {
+      scrollToBottom("auto");
+    }
+  }, [session?.messages, scrollToBottom]);
+
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
@@ -66,7 +153,28 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       void (async () => {
         try {
           if (cancelled) return;
-          await load();
+          const r = await fetch(
+            `/api/project/chat-sessions/${encodeURIComponent(sessionId)}?limit=${PAGE_LIMIT}`,
+            { credentials: "include" }
+          );
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || cancelled) return;
+          const payload = j as { session?: Session; hasMoreOlder?: boolean };
+          if (!payload.session) return;
+          const tail = payload.session.messages;
+          setSession((prev) => {
+            if (!prev) {
+              stickBottomRef.current = true;
+              return payload.session!;
+            }
+            const next =
+              historyExpandedRef.current ? { ...prev, messages: mergeOlderPrefixWithLatestTail(prev.messages, tail) } : payload.session!;
+            const prevLast = prev.messages[prev.messages.length - 1]?.id;
+            const nextLast = next.messages[next.messages.length - 1]?.id;
+            if (prevLast !== nextLast) stickBottomRef.current = true;
+            return next;
+          });
+          setHasMoreOlder(Boolean(payload.hasMoreOlder));
         } finally {
           loadInFlightRef.current = false;
         }
@@ -76,32 +184,41 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       cancelled = true;
       clearInterval(interval);
     };
-  }, [sessionId, load]);
+  }, [sessionId]);
+
+  function buildOutgoingPayload(rawUserText: string, t: Ticket | null, sess: Session | null): string {
+    const trimmed = rawUserText.trim();
+    if (!t) return trimmed;
+
+    const priorUserCount = (sess?.messages ?? []).filter((m) => m.role === "user").length;
+    const refresh = userRequestedTicketContextRefresh(trimmed);
+    const body = stripTicketContextRefreshTag(trimmed) || trimmed;
+
+    const key = t.ticketKey?.trim() || t.id;
+    if (priorUserCount === 0 || refresh) {
+      return buildFullTicketContextText({
+        ticketKeyOrId: key,
+        title: t.title,
+        description: t.description,
+        descriptionPrompt: t.descriptionPrompt,
+        userMessage: body,
+      });
+    }
+    return buildFollowUpTicketUserPayload(body);
+  }
 
   async function send() {
     if (!input.trim() || !sessionId) return;
     setLoading(true);
     setErr("");
     try {
-      const msg = input.trim();
+      const raw = input.trim();
       setInput("");
-      await loadTicket();
-      const ctx = ticket
-        ? [
-            "КОНТЕКСТ ТИКЕТА (актуальная версия полей):",
-            `Ticket: ${ticket.ticketKey || ticket.id}`,
-            `Заголовок: ${ticket.title}`,
-            "",
-            ticket.description ? `Описание:\n${ticket.description}` : "Описание: (пусто)",
-            "",
-            ticket.descriptionPrompt?.trim() ? `Инженерный промпт:\n${ticket.descriptionPrompt.trim()}` : "Инженерный промпт: (пусто)",
-            "",
-            "Если я ссылаюсь на поле (например: «в описании…», «в промпте…») — используй значения выше.",
-            "",
-            "СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:",
-            msg,
-          ].join("\n")
-        : msg;
+      const tr = await fetch(`/api/project/backlog/${encodeURIComponent(params.id)}`, { credentials: "include" });
+      const tj = await tr.json().catch(() => ({}));
+      const latestTicket = (tj as { item?: Ticket }).item ?? ticket;
+      if ((tj as { item?: Ticket }).item) setTicket((tj as { item: Ticket }).item);
+      const ctx = buildOutgoingPayload(raw, latestTicket ?? null, session);
       const r = await fetch("/api/agent/chat", {
         method: "POST",
         credentials: "include",
@@ -115,11 +232,13 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       const uid = j.userMsg?.id;
+      stickBottomRef.current = true;
       if (uid) {
         const t = (j.timeoutMs ?? 1_800_000) + 120_000;
         await waitForAssistantAfterUserMessage(sessionId, uid, { timeoutMs: t });
       }
       await load();
+      scrollToBottom("smooth");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -136,7 +255,27 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
 
       {err ? <div className="shrink-0 px-3 py-2 text-xs text-red-400">{err}</div> : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 text-sm">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 text-sm"
+        onScroll={(e) => {
+          const t = e.currentTarget;
+          const dist = t.scrollHeight - t.scrollTop - t.clientHeight;
+          stickBottomRef.current = dist < 120;
+        }}
+      >
+        {hasMoreOlder ? (
+          <div className="mb-3 flex justify-center">
+            <button
+              type="button"
+              disabled={loadingOlder}
+              onClick={() => void loadOlder()}
+              className="rounded border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+            >
+              {loadingOlder ? "Загрузка…" : "Ранее в переписке"}
+            </button>
+          </div>
+        ) : null}
         {session?.messages?.length ? (
           <div className="space-y-3">
             {session.messages.map((m) => (
@@ -155,20 +294,38 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                     m.role
                   )}
                 </div>
-                <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
-                  {m.role !== "user" && m.content.includes(WAITING_CODE)
-                    ? m.content.replace(WAITING_CODE, "").trim()
-                    : m.content}
-                </pre>
+                {m.role === "user" &&
+                m.content.startsWith(TICKET_CONTEXT_HEAD) &&
+                m.content.length > 1400 ? (
+                  <details className="mt-1 rounded border border-slate-700/60 bg-slate-950/40 p-2">
+                    <summary className="cursor-pointer select-none text-xs text-slate-400">
+                      Полный контекст тикета ({m.content.length.toLocaleString("ru-RU")} симв.) — развернуть
+                    </summary>
+                    <pre className="mt-2 max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm text-slate-200">
+                      {m.content}
+                    </pre>
+                  </details>
+                ) : (
+                  <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
+                    {m.role !== "user" && m.content.includes(WAITING_CODE)
+                      ? m.content.replace(WAITING_CODE, "").trim()
+                      : m.content}
+                  </pre>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <div className="text-sm text-slate-500">Нет сообщений.</div>
         )}
+        <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
       </div>
 
       <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 backdrop-blur-sm">
+        <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
+          Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
+          <span className="font-mono text-slate-400">[обновить контекст]</span>.
+        </p>
         <div className="flex gap-2">
           <textarea
             className="min-h-[2.75rem] max-h-32 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"

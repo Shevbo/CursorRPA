@@ -40,12 +40,26 @@ export async function GET(req: Request, { params }: Ctx) {
       chats: {
         orderBy: { updatedAt: "desc" },
         take: 1,
-        include: { messages: { orderBy: { createdAt: "asc" } } },
+        include: {
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 200,
+          },
+        },
       },
     },
   });
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ item, session: item.chats[0] ?? null });
+  const rawSession = item.chats[0] ?? null;
+  const session = rawSession
+    ? {
+        ...rawSession,
+        messages: [...rawSession.messages].sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+        ),
+      }
+    : null;
+  return NextResponse.json({ item, session });
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {

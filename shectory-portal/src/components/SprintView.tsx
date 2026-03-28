@@ -79,7 +79,10 @@ export function SprintView({
   }, [load, loadSprint]);
 
   const loadSession = useCallback(async (sessionId: string) => {
-    const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(sessionId)}`, { credentials: "include" });
+    const r = await fetch(
+      `/api/project/chat-sessions/${encodeURIComponent(sessionId)}?limit=200`,
+      { credentials: "include" }
+    );
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return;
     setSession((j as { session: SessionWithMessages }).session);
@@ -111,6 +114,15 @@ export function SprintView({
     try {
       const msg = input.trim();
       setInput("");
+      const priorUserCount = session.messages.filter((m) => m.role === "user").length;
+      const sprintBlock =
+        `SPRINT #${sprintNumber}\n` +
+        `Tickets:\n` +
+        items.map((t) => `- ${idLabel(t)} ${t.title} (status=${t.status}, p=${t.priority}${t.isPaused ? ", paused" : ""})`).join("\n");
+      const message =
+        priorUserCount === 0
+          ? `${sprintBlock}\n\nUser:\n${msg}`
+          : `Контекст спринта и список тикетов уже в первом сообщении пользователя в этой сессии.\n\nUser:\n${msg}`;
       const r = await fetch("/api/agent/chat", {
         method: "POST",
         credentials: "include",
@@ -118,11 +130,7 @@ export function SprintView({
         body: JSON.stringify({
           projectId,
           sessionId: session.id,
-          message:
-            `SPRINT #${sprintNumber}\n` +
-            `Tickets:\n` +
-            items.map((t) => `- ${idLabel(t)} ${t.title} (status=${t.status}, p=${t.priority}${t.isPaused ? ", paused" : ""})`).join("\n") +
-            `\n\nUser:\n${msg}`,
+          message,
         }),
       });
       const j = (await r.json().catch(() => ({}))) as {

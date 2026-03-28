@@ -1,13 +1,29 @@
 export type ChatSessionPayload = {
   id: string;
   messages: { id: string; role: string; content: string; createdAt: string; sessionId?: string }[];
+  hasMoreOlder?: boolean;
 };
 
-export async function fetchChatSession(sessionId: string): Promise<ChatSessionPayload | null> {
-  const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(sessionId)}`, { credentials: "include" });
-  const j = (await r.json().catch(() => ({}))) as { session?: ChatSessionPayload; error?: string };
+const DEFAULT_FETCH_LIMIT = 500;
+
+export async function fetchChatSession(
+  sessionId: string,
+  opts?: { limit?: number; before?: string }
+): Promise<ChatSessionPayload | null> {
+  const sp = new URLSearchParams();
+  sp.set("limit", String(opts?.limit ?? DEFAULT_FETCH_LIMIT));
+  if (opts?.before) sp.set("before", opts.before);
+  const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(sessionId)}?${sp}`, {
+    credentials: "include",
+  });
+  const j = (await r.json().catch(() => ({}))) as {
+    session?: ChatSessionPayload;
+    error?: string;
+    hasMoreOlder?: boolean;
+  };
   if (!r.ok) return null;
-  return j.session ?? null;
+  if (!j.session) return null;
+  return { ...j.session, hasMoreOlder: j.hasMoreOlder };
 }
 
 /** Ждём появления assistant-сообщения после указанного user-сообщения. */
