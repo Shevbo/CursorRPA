@@ -154,25 +154,6 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
-  const clockSide = agentWaiting ? "user" : "agent";
-
-  const [agentClockSec, setAgentClockSec] = useState(0);
-  const [userClockSec, setUserClockSec] = useState(0);
-
-  useEffect(() => {
-    setAgentClockSec(0);
-    setUserClockSec(0);
-  }, [startInfo?.startUserMsgId]);
-
-  useEffect(() => {
-    if (inSprint) return;
-    if (!session?.id) return;
-    const t = setInterval(() => {
-      if (clockSide === "agent") setAgentClockSec((s) => s + 1);
-      else setUserClockSec((s) => s + 1);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [clockSide, inSprint, session?.id]);
 
   useEffect(() => {
     try {
@@ -206,13 +187,6 @@ export function BacklogTicketView({
     setDismissedCmds([]);
     lastAutoShellFailCmd.current = null;
   }, [lastAssistantContent]);
-
-  function formatClock(totalSeconds: number) {
-    const s = Math.max(0, Math.floor(totalSeconds));
-    const mm = Math.floor(s / 60);
-    const ss = s % 60;
-    return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-  }
 
   async function save(patch: Partial<BacklogItem> & { sprintId?: string | null }) {
     setSaving(true);
@@ -830,40 +804,22 @@ export function BacklogTicketView({
           </div>
         )}
 
-        {agentWaiting && !inSprint && (
-          <div className="mt-3 rounded border border-amber-900/60 bg-amber-900/10 p-3 text-xs text-amber-200">
-            ⏳ Агент ждёт вашего ответа. Отвечать нужно в поле ввода чата ниже.
-          </div>
-        )}
-
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
       </div>
 
       <div className="rounded-xl border border-slate-800 bg-black/20">
         <div className="border-b border-slate-800 p-3 sm:p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="text-sm font-medium text-white">Лента под тикетом</div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <div
-                  className={`touch-manipulation rounded border px-2 py-2 sm:py-1 ${
-                    clockSide === "agent"
-                      ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
-                      : "border-slate-700 bg-slate-900/20 text-slate-300"
-                  }`}
-                >
-                  Агент {formatClock(agentClockSec)}
-                </div>
-                <div
-                  className={`touch-manipulation rounded border px-2 py-2 sm:py-1 ${
-                    clockSide === "user"
-                      ? "animate-pulse border-amber-700/60 bg-amber-950/30 text-amber-200"
-                      : "border-slate-700 bg-slate-900/20 text-slate-300"
-                  }`}
-                >
-                  Вы {formatClock(userClockSec)}
-                </div>
-              </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="text-sm font-medium text-white">Лента под тикетом</div>
+              {agentWaiting && !inSprint ? (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-600/50 bg-amber-950/50 px-2.5 py-1.5 text-[11px] font-medium text-amber-100 sm:py-1">
+                  <span className="inline-block size-1.5 animate-pulse rounded-full bg-amber-400" aria-hidden />
+                  Агент ждёт вашего ответа (есть вопросы / уточнения)
+                </span>
+              ) : null}
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0 sm:items-end">
               {!inSprint && session?.id ? (
                 <label className="flex max-w-full cursor-pointer touch-manipulation items-start gap-2 rounded border border-slate-800 bg-slate-950/40 p-2 text-[11px] leading-snug text-slate-400 sm:max-w-sm">
                   <input

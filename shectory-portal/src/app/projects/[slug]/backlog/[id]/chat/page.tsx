@@ -17,6 +17,14 @@ type Ticket = { id: string; ticketKey?: string | null; title: string; descriptio
 
 const PAGE_LIMIT = 80;
 
+function messagesListEqual(a: Msg[], b: Msg[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].content !== b[i].content) return false;
+  }
+  return true;
+}
+
 function mergeOlderPrefixWithLatestTail(prev: Msg[], tail: Msg[]): Msg[] {
   if (tail.length === 0) return prev;
   if (prev.length === 0) return tail;
@@ -45,7 +53,6 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const loadInFlightRef = useRef(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const stickBottomRef = useRef(true);
   /** Пользователь подгружал «Ранее» — нельзя затирать историю обычным load(tail). */
@@ -53,9 +60,23 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
 
   const ticketLabel = ticket?.ticketKey?.trim() || params.id.slice(0, 8);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  /** Только внутри listRef — не вызывать scrollIntoView (на iOS прокручивает родителя/iframe и сбивает позицию). */
+  const scrollListToBottomIfPinned = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = listRef.current;
+    if (!el || !stickBottomRef.current) return;
+    requestAnimationFrame(() => {
+      const node = listRef.current;
+      if (!node || !stickBottomRef.current) return;
+      node.scrollTo({ top: node.scrollHeight, behavior });
+    });
   }, []);
+
+  const messagesScrollKey = useMemo(() => {
+    const m = session?.messages;
+    if (!m?.length) return "";
+    const last = m[m.length - 1];
+    return `${m.length}:${last.id}:${last.content.length}`;
+  }, [session?.messages]);
 
   const loadTicket = useCallback(async () => {
     setErr("");
@@ -84,11 +105,15 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     };
     if (payload.session) {
       if (historyExpandedRef.current) {
-        setSession((prev) =>
-          prev
-            ? { ...prev, messages: mergeOlderPrefixWithLatestTail(prev.messages, payload.session!.messages) }
-            : payload.session!
-        );
+        setSession((prev) => {
+          if (!prev) return payload.session!;
+          const merged = {
+            ...prev,
+            messages: mergeOlderPrefixWithLatestTail(prev.messages, payload.session!.messages),
+          };
+          if (messagesListEqual(prev.messages, merged.messages)) return prev;
+          return merged;
+        });
       } else {
         setSession(payload.session);
       }
@@ -139,10 +164,8 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   }, [load, loadTicket]);
 
   useEffect(() => {
-    if (stickBottomRef.current) {
-      scrollToBottom("auto");
-    }
-  }, [session?.messages, scrollToBottom]);
+    scrollListToBottomIfPinned("auto");
+  }, [messagesScrollKey, scrollListToBottomIfPinned]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -169,6 +192,9 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             }
             const next =
               historyExpandedRef.current ? { ...prev, messages: mergeOlderPrefixWithLatestTail(prev.messages, tail) } : payload.session!;
+            if (messagesListEqual(prev.messages, next.messages)) {
+              return prev;
+            }
             const prevLast = prev.messages[prev.messages.length - 1]?.id;
             const nextLast = next.messages[next.messages.length - 1]?.id;
             if (prevLast !== nextLast) stickBottomRef.current = true;
@@ -238,7 +264,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
         await waitForAssistantAfterUserMessage(sessionId, uid, { timeoutMs: t });
       }
       await load();
-      scrollToBottom("smooth");
+      scrollListToBottomIfPinned("auto");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -247,7 +273,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
         Чат тикета · {params.slug}/{ticketLabel}
         {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
@@ -257,7 +283,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 text-sm"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 pb-4 text-sm [-webkit-overflow-scrolling:touch]"
         onScroll={(e) => {
           const t = e.currentTarget;
           const dist = t.scrollHeight - t.scrollTop - t.clientHeight;
@@ -318,10 +344,9 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
         ) : (
           <div className="text-sm text-slate-500">Нет сообщений.</div>
         )}
-        <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
       </div>
 
-      <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 backdrop-blur-sm">
+      <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
         <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
           Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
           <span className="font-mono text-slate-400">[обновить контекст]</span>.
