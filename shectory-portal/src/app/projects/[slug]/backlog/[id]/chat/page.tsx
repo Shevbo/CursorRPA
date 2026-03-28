@@ -4,6 +4,12 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "next/navigation";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import {
+  CHAT_POST_MESSAGE_TYPE,
+  type ChatAgentPresence,
+  looksLikeAssistantFailure,
+  type TicketChatPostMessage,
+} from "@/lib/agent-chat-presence";
+import {
   TICKET_CONTEXT_HEAD,
   buildFollowUpTicketUserPayload,
   buildFullTicketContextText,
@@ -41,22 +47,11 @@ function formatMsgTime(iso: string): string {
   }
 }
 
-type ChatAgentPresence = "thinking" | "idle" | "error";
-
-function looksLikeAssistantFailure(content: string): boolean {
-  const c = content;
-  const low = c.toLowerCase();
-  if (/e2big/i.test(c)) return true;
-  if (/\bspawn\s+e[a-z0-9_]+\b/i.test(low)) return true;
-  if (/ошибка\s+фонов(ого)?\s+агента/i.test(c)) return true;
-  if (/\bargument list too long\b/i.test(low)) return true;
-  return false;
-}
-
 function TicketChatFramePageInner({ params }: { params: { slug: string; id: string } }) {
   const WAITING_CODE = "[***waiting for answer***]";
   const sp = useSearchParams();
   const sessionId = useMemo(() => (sp.get("sessionId") || "").trim(), [sp]);
+  const embedThread = useMemo(() => (sp.get("embed") || "").trim() === "thread", [sp]);
   const [session, setSession] = useState<Session | null>(null);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -101,30 +96,16 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     return "idle";
   }, [loading, err, session?.messages]);
 
-  const presenceUi = useMemo(() => {
-    switch (chatAgentPresence) {
-      case "thinking":
-        return {
-          emoji: "🤔",
-          label: "Агент отвечает — подождите новое сообщение в чате.",
-          short: "Ждём агента",
-        };
-      case "error":
-        return {
-          emoji: "🤦",
-          label:
-            "Похоже на сбой (ошибка процесса или ответа). Нового текста от агента без вашего действия обычно не будет — проверьте сообщение и при необходимости запустите снова или напишите в поддержку.",
-          short: "Ошибка",
-        };
-      default:
-        return {
-          emoji: "😴",
-          label:
-            "Ответ агента уже в чате; автоматически нового сообщения сейчас не ожидается. Если агент задал вопрос — ответьте сами кнопкой «Отправить».",
-          short: "Пауза",
-        };
-    }
-  }, [chatAgentPresence]);
+  useEffect(() => {
+    if (!embedThread || typeof window === "undefined" || window.parent === window) return;
+    const payload: TicketChatPostMessage = {
+      type: CHAT_POST_MESSAGE_TYPE,
+      chatAgentPresence,
+      loading,
+      err,
+    };
+    window.parent.postMessage(payload, window.location.origin);
+  }, [chatAgentPresence, loading, err, embedThread]);
 
   const loadTicket = useCallback(async () => {
     setErr("");
@@ -322,17 +303,22 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
-        Чат тикета · {params.slug}/{ticketLabel}
-        {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
-      </div>
-
-      {err ? <div className="shrink-0 px-3 py-2 text-xs text-red-400">{err}</div> : null}
+      {!embedThread ? (
+        <>
+          <div className="shrink-0 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
+            Чат тикета · {params.slug}/{ticketLabel}
+            {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
+          </div>
+          {err ? <div className="shrink-0 px-3 py-2 text-xs text-red-400">{err}</div> : null}
+        </>
+      ) : null}
 
       <div className="relative min-h-0 flex-1">
         <div
           ref={listRef}
-          className="absolute inset-0 overflow-y-auto overscroll-y-contain p-3 pb-10 pr-14 text-sm [-webkit-overflow-scrolling:touch]"
+          className={`absolute inset-0 overflow-y-auto overscroll-y-contain p-3 text-sm [-webkit-overflow-scrolling:touch] ${
+            embedThread ? "" : "pb-10 pr-14"
+          }`}
           onScroll={(e) => {
             const t = e.currentTarget;
             const dist = t.scrollHeight - t.scrollTop - t.clientHeight;
@@ -394,56 +380,40 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             <div className="text-sm text-slate-500">Нет сообщений.</div>
           )}
         </div>
-        {sessionId ? (
-          <div
-            className="pointer-events-none absolute bottom-2 right-2 z-10"
-            role="status"
-            aria-live="polite"
-            aria-label={presenceUi.label}
-          >
-            <div
-              className="pointer-events-auto cursor-default rounded-md border border-slate-600/90 bg-slate-950/95 px-2 py-1.5 text-lg leading-none shadow-md backdrop-blur-sm"
-              title={presenceUi.label}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden>{presenceUi.emoji}</span>
-                <span className="hidden text-[10px] font-medium text-slate-400 sm:inline">{presenceUi.short}</span>
-              </span>
-            </div>
-          </div>
-        ) : null}
       </div>
 
-      <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
-        <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
-          Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
-          <span className="font-mono text-slate-400">[обновить контекст]</span>.
-        </p>
-        <div className="flex gap-2">
-          <textarea
-            className="min-h-[2.75rem] max-h-32 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
-            placeholder="Сообщение агенту…"
-            rows={2}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            disabled={loading || !sessionId}
-          />
-          <button
-            type="button"
-            className="h-fit shrink-0 self-end rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-            disabled={loading || !sessionId || !input.trim()}
-            onClick={() => void send()}
-          >
-            {loading ? "…" : "Отправить"}
-          </button>
+      {!embedThread ? (
+        <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+          <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
+            Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
+            <span className="font-mono text-slate-400">[обновить контекст]</span>.
+          </p>
+          <div className="flex gap-2">
+            <textarea
+              className="min-h-[2.75rem] max-h-32 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
+              placeholder="Сообщение агенту…"
+              rows={2}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              disabled={loading || !sessionId}
+            />
+            <button
+              type="button"
+              className="h-fit shrink-0 self-end rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={loading || !sessionId || !input.trim()}
+              onClick={() => void send()}
+            >
+              {loading ? "…" : "Отправить"}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

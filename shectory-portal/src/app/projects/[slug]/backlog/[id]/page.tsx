@@ -47,8 +47,8 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
     : null;
 
   return (
-    <main className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <main className="mx-auto flex h-[100dvh] max-w-6xl min-h-0 flex-col overflow-hidden px-3 py-3 sm:px-4 sm:py-4">
+      <div className="mb-2 shrink-0 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link href={`/projects/${project.slug}/control`} className="text-blue-400 hover:underline">
             ← Бэклог
@@ -61,15 +61,17 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
         </div>
       </div>
 
-      <BacklogTicketView
-        projectId={project.id}
-        projectSlug={project.slug}
-        itemId={item.id}
-        projectAiContext={project.aiContext}
-        projectTechStack={project.techStack.map((t) => t.name)}
-        initialItem={item as unknown as Record<string, unknown>}
-        initialSession={initialSession as unknown as Record<string, unknown> | null}
-      />
+      <div className="min-h-0 flex-1 overflow-hidden pb-[env(safe-area-inset-bottom)]">
+        <BacklogTicketView
+          projectId={project.id}
+          projectSlug={project.slug}
+          itemId={item.id}
+          projectAiContext={project.aiContext}
+          projectTechStack={project.techStack.map((t) => t.name)}
+          initialItem={item as unknown as Record<string, unknown>}
+          initialSession={initialSession as unknown as Record<string, unknown> | null}
+        />
+      </div>
     </main>
   );
 }

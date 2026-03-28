@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BacklogItem, ChatMessage, ChatSession, Sprint } from "@prisma/client";
+import {
+  CHAT_POST_MESSAGE_TYPE,
+  type ChatAgentPresence,
+  looksLikeAssistantFailure,
+  type TicketChatPostMessage,
+} from "@/lib/agent-chat-presence";
 import { BACKLOG_ITEM_STATUSES, BACKLOG_SPRINT_STATUSES } from "@/lib/backlog-constants";
+import {
+  buildFollowUpTicketUserPayload,
+  buildFullTicketContextText,
+  stripTicketContextRefreshTag,
+  userRequestedTicketContextRefresh,
+} from "@/lib/ticket-chat-context";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
@@ -61,6 +73,7 @@ export function BacklogTicketView({
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
   const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
   const [clockTick, setClockTick] = useState(0);
+  const [iframeChatSync, setIframeChatSync] = useState<TicketChatPostMessage | null>(null);
   const autoShellInFlight = useRef(false);
   /** Не крутить авто-ОК в цикл при ошибке одной и той же команды. */
   const lastAutoShellFailCmd = useRef<string | null>(null);
@@ -157,6 +170,52 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
+
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return;
+      const d = e.data as { type?: string } | null;
+      if (!d || d.type !== CHAT_POST_MESSAGE_TYPE) return;
+      setIframeChatSync(d as TicketChatPostMessage);
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  const sessionDerivedPresence = useMemo((): ChatAgentPresence => {
+    const msgs = session?.messages ?? [];
+    if (msgs.length === 0) return "idle";
+    const last = msgs[msgs.length - 1]!;
+    if (last.role === "user") return "thinking";
+    if (looksLikeAssistantFailure(last.content ?? "")) return "error";
+    return "idle";
+  }, [session?.messages]);
+
+  const agentPresence = useMemo((): ChatAgentPresence => {
+    if (run?.status === "failed") return "error";
+    const orchBusy =
+      startPending || (run && (run.status === "running" || run.status === "queued"));
+    if (orchBusy) return "thinking";
+    if (loadingChat || cmdRunning) return "thinking";
+    if (generating && promptRun && (promptRun.status === "running" || promptRun.status === "queued")) return "thinking";
+    if (iframeChatSync) {
+      if (iframeChatSync.loading) return "thinking";
+      if (iframeChatSync.err?.trim()) return "error";
+      return iframeChatSync.chatAgentPresence;
+    }
+    return sessionDerivedPresence;
+  }, [run, startPending, loadingChat, cmdRunning, generating, promptRun, iframeChatSync, sessionDerivedPresence]);
+
+  const agentPresenceTitle = useMemo(() => {
+    switch (agentPresence) {
+      case "thinking":
+        return "Агент обрабатывает задачу — дождитесь нового сообщения в ленте выше.";
+      case "error":
+        return "Похоже на сбой ответа или процесса. Обычно нового вывода без ваших действий не будет — проверьте текст и при необходимости перезапустите агента.";
+      default:
+        return "Ответ уже в ленте; автоматически нового сообщения сейчас не ожидается. Если агент задал вопрос — ответьте в поле ниже.";
+    }
+  }, [agentPresence]);
 
   useEffect(() => {
     try {
@@ -494,13 +553,32 @@ export function BacklogTicketView({
     setLoadingChat(true);
     setErr("");
     try {
-      const msg = chatInput.trim();
+      const raw = chatInput.trim();
       setChatInput("");
+      const tr = await fetch(`/api/project/backlog/${encodeURIComponent(itemId)}`, { credentials: "include" });
+      const tj = await tr.json().catch(() => ({}));
+      const latestItem = (tj as { item?: ItemWithSprint }).item;
+      const ticket = latestItem ?? item;
+      if (latestItem) setItem(latestItem);
+      const priorUserCount = (session.messages ?? []).filter((m) => m.role === "user").length;
+      const refresh = userRequestedTicketContextRefresh(raw);
+      const body = stripTicketContextRefreshTag(raw) || raw;
+      const key = ticket.ticketKey?.trim() || ticket.id;
+      const message =
+        priorUserCount === 0 || refresh
+          ? buildFullTicketContextText({
+              ticketKeyOrId: key,
+              title: ticket.title,
+              description: ticket.description,
+              descriptionPrompt: ticket.descriptionPrompt,
+              userMessage: body,
+            })
+          : buildFollowUpTicketUserPayload(body);
       const r = await fetch("/api/agent/chat", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, sessionId: session.id, message: msg }),
+        body: JSON.stringify({ projectSlug, sessionId: session.id, message }),
       });
       const j = (await r.json().catch(() => ({}))) as {
         error?: string;
@@ -590,11 +668,22 @@ export function BacklogTicketView({
     }
   }
 
-  return (
-    <div className="max-w-full space-y-4 overflow-x-hidden [-webkit-tap-highlight-color:transparent] sm:overflow-x-visible">
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 sm:p-5">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+  const chatIframeSrc =
+    session?.id && !inSprint
+      ? `/projects/${encodeURIComponent(projectSlug)}/backlog/${encodeURIComponent(itemId)}/chat?sessionId=${encodeURIComponent(session.id)}&embed=thread`
+      : "";
+
+  const presenceEmoji = agentPresence === "thinking" ? "🤔" : agentPresence === "error" ? "🤦" : "😴";
+  const presenceAnimClass =
+    agentPresence === "thinking"
+      ? "shectory-agent-presence-thinking"
+      : agentPresence === "error"
+        ? "shectory-agent-presence-error"
+        : "shectory-agent-presence-sleep";
+
+  const ticketTopSection = (
+    <div className="space-y-2 px-2 py-2 sm:px-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
             <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">
               <span className="font-mono text-xs text-blue-300">{ticketIdLabel(item)}</span>
               {item.isPaused && <span className="rounded bg-amber-900/40 px-1.5 py-0.5 text-[10px] text-amber-300">paused</span>}
@@ -703,7 +792,6 @@ export function BacklogTicketView({
               </div>
             ) : null}
           </div>
-        </div>
 
         <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40">
           <button
@@ -855,187 +943,220 @@ export function BacklogTicketView({
         )}
 
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
-      </div>
+    </div>
+  );
 
-      <div className="rounded-xl border border-slate-800 bg-black/20">
-        <div className="border-b border-slate-800 p-3 sm:p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="text-sm font-medium text-white">Чат с агентом</div>
-              {agentWaiting && !inSprint ? (
-                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-600/50 bg-amber-950/50 px-2.5 py-1.5 text-[11px] font-medium text-amber-100 sm:py-1">
-                  <span className="inline-block size-1.5 animate-pulse rounded-full bg-amber-400" aria-hidden />
-                  Агент ждёт вашего ответа (есть вопросы / уточнения)
-                </span>
-              ) : null}
-            </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0 sm:items-end">
-              {!inSprint && session?.id ? (
-                <label className="flex max-w-full cursor-pointer touch-manipulation items-start gap-2 rounded border border-slate-800 bg-slate-950/40 p-2 text-[11px] leading-snug text-slate-400 sm:max-w-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 size-[1.15rem] shrink-0 accent-amber-600"
-                    checked={autoShellValid}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        const until = Date.now() + AUTO_SHELL_MS;
-                        localStorage.setItem(AUTO_SHELL_UNTIL_KEY, String(until));
-                        setAutoShellUntil(until);
-                        lastAutoShellFailCmd.current = null;
-                      } else {
-                        localStorage.removeItem(AUTO_SHELL_UNTIL_KEY);
-                        setAutoShellUntil(null);
-                      }
-                    }}
-                  />
-                  <span>
-                    Авто-ОК на shell-команды на 2 часа
-                    {autoShellValid && autoShellUntil ? (
-                      <span className="mt-0.5 block font-mono text-[10px] text-slate-500">
-                        до {new Date(autoShellUntil).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
-                      </span>
-                    ) : null}
-                  </span>
-                </label>
-              ) : null}
-            </div>
-          </div>
-          {inSprint ? (
-            <div className="mt-1 text-xs text-slate-500">
-              Этот тикет реализуется в рамках спринта. Перейдите в спринт для работы с агентом.
-              {sprintLink && (
-                <>
-                  {" "}
-                  <Link href={sprintLink} className="text-blue-400 hover:underline">
-                    Открыть спринт
-                  </Link>
-                  .
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mt-1 text-xs text-slate-500">Весь диалог с агентом сохраняется здесь (ChatMessage в БД).</div>
-          )}
+  const chatMiddleSection =
+    !inSprint && session?.id ? (
+      <div className="flex min-h-0 min-w-0 flex-[5] flex-col overflow-hidden border-x border-slate-800 bg-black/20">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 px-2 py-1.5">
+          <span className="text-sm font-medium text-white">Чат с агентом</span>
+          {agentWaiting ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-600/50 bg-amber-950/50 px-2 py-0.5 text-[10px] text-amber-100">
+              <span className="size-1 animate-pulse rounded-full bg-amber-400" aria-hidden />
+              Ждёт ответа
+            </span>
+          ) : null}
+          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500">
+            <input
+              type="checkbox"
+              className="size-3.5 accent-amber-600"
+              checked={autoShellValid}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  const until = Date.now() + AUTO_SHELL_MS;
+                  localStorage.setItem(AUTO_SHELL_UNTIL_KEY, String(until));
+                  setAutoShellUntil(until);
+                  lastAutoShellFailCmd.current = null;
+                } else {
+                  localStorage.removeItem(AUTO_SHELL_UNTIL_KEY);
+                  setAutoShellUntil(null);
+                }
+              }}
+            />
+            Авто-ОК shell 2ч
+          </label>
         </div>
-        {!inSprint && session?.id ? (
-          <div>
-            {run && (
-              <div className="border-b border-slate-800 px-3 py-3">
-                <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
-                  <span>Чеклист (как Cursor)</span>
-                  <span className="font-mono text-slate-300">
-                    {runProgress.done}/{runProgress.total} {runConnected ? "· live" : "· …"}
+        {run ? (
+          <div className="max-h-[28%] shrink-0 overflow-y-auto border-b border-slate-800 px-2 py-2">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+              <span>Чеклист</span>
+              <span className="font-mono text-slate-300">
+                {runProgress.done}/{runProgress.total}
+                {runConnected ? " · live" : ""}
+              </span>
+            </div>
+            <div className="mt-1 space-y-0.5">
+              {renderSteps.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-slate-800/80 bg-black/10 px-1.5 py-0.5 text-[10px]">
+                  <span className="truncate text-slate-200">{s.title}</span>
+                  <span
+                    className={
+                      s.status === "done"
+                        ? "text-emerald-300"
+                        : s.status === "running"
+                          ? "text-amber-200"
+                          : s.status === "failed"
+                            ? "text-red-300"
+                            : "text-slate-400"
+                    }
+                  >
+                    {s.status}
                   </span>
                 </div>
-                <div className="mt-2 space-y-1">
-                  {renderSteps.map((s) => (
-                    <div key={s.id} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-black/10 px-2 py-1 text-xs">
-                      <span className="text-slate-200">{s.title}</span>
-                      <span
-                        className={
-                          s.status === "done"
-                            ? "text-emerald-300"
-                            : s.status === "running"
-                              ? "text-amber-200"
-                              : s.status === "failed"
-                                ? "text-red-300"
-                                : "text-slate-400"
-                        }
-                      >
-                        {s.status}
-                      </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="relative min-h-0 flex-1 bg-slate-950">
+          <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-800 bg-slate-950/95 px-2 py-1">
+          <button
+            type="button"
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-red-900/70 bg-red-950/40 text-red-200 hover:bg-red-950/60 disabled:opacity-30"
+            disabled={!session?.id}
+            onClick={() => void stopOrchestrator()}
+            title="Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."
+            aria-label="Остановить работу агента"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-5" aria-hidden>
+              <path d="M6 6h12v12H6V6z" />
+            </svg>
+          </button>
+          <div
+            className="flex h-[3.75rem] w-[3.75rem] shrink-0 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90"
+            role="status"
+            aria-live="polite"
+            title={agentPresenceTitle}
+            aria-label={agentPresenceTitle}
+          >
+            <span className={`shectory-agent-presence-emoji ${presenceAnimClass}`} aria-hidden>
+              {presenceEmoji}
+            </span>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className="flex min-h-0 flex-[5] flex-col items-center justify-center overflow-hidden border-x border-slate-800 bg-black/20 px-4 text-center text-sm text-slate-500">
+        {inSprint ? (
+          <>
+            Чат отключён — тикет в спринте.
+            {sprintLink ? (
+              <>
+                {" "}
+                <Link href={sprintLink} className="text-blue-400 hover:underline">
+                  Открыть спринт
+                </Link>
+              </>
+            ) : null}
+          </>
+        ) : (
+          "Пока нет чата. В «Управление» нажмите «Запустить в работу»."
+        )}
+      </div>
+    );
+
+  const chatBottomSection =
+    !inSprint && session?.id ? (
+      <div className="flex min-h-0 min-w-0 flex-[2] flex-col overflow-hidden border-t border-slate-800 bg-slate-950/98">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
+            <div className="rounded border border-amber-900/60 bg-amber-900/10 p-2">
+              <div className="text-[11px] font-medium text-amber-200">Подтверждение команды</div>
+              {approvalCmds.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  {approvalCmds.map((c, idx) => (
+                    <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
+                      <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] text-slate-200">{c}</pre>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
+                          disabled={cmdRunning}
+                          onClick={() => void execCommand(c)}
+                        >
+                          ОК
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-50"
+                          disabled={cmdRunning}
+                          onClick={() => setDismissedCmds((prev) => [...prev, c])}
+                        >
+                          Отмена
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-            <div className="relative z-0 isolate min-h-[440px] h-[64vh] sm:h-[76vh] sm:min-h-[520px]">
-              <iframe
-                className="h-full w-full touch-manipulation border-0"
-                src={`/projects/${encodeURIComponent(projectSlug)}/backlog/${encodeURIComponent(itemId)}/chat?sessionId=${encodeURIComponent(session.id)}`}
-                title="Ticket chat"
-              />
-            </div>
-            <div className="relative z-20 space-y-2 border-t border-slate-800 bg-slate-950/98 px-2 py-3 sm:px-3">
-              {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
-                <div className="rounded border border-amber-900/60 bg-amber-900/10 p-3 shadow-lg shadow-black/40">
-                  <div className="text-xs font-medium text-amber-200">Требуется подтверждение команды</div>
-                  <div className="mt-1 text-[11px] leading-snug text-amber-200/80">
-                    Агент запросил согласование. Подтвердите команду кнопкой «ОК» или отклоните «Отмена».
-                  </div>
-
-                  {approvalCmds.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                      {approvalCmds.map((c, idx) => (
-                        <div key={idx} className="rounded border border-slate-800 bg-black/20 p-2">
-                          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-slate-200 sm:max-h-none">
-                            {c}
-                          </pre>
-                          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                            <button
-                              type="button"
-                              className="touch-manipulation min-h-[44px] min-w-[44px] rounded bg-amber-600 px-4 py-3 text-sm font-medium text-black active:bg-amber-500 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-2 sm:text-xs"
-                              disabled={cmdRunning}
-                              onClick={() => void execCommand(c)}
-                            >
-                              ОК
-                            </button>
-                            <button
-                              type="button"
-                              className="touch-manipulation min-h-[44px] min-w-[44px] rounded border border-slate-700 px-4 py-3 text-sm text-slate-200 active:bg-slate-800 disabled:opacity-50 sm:min-h-0 sm:min-w-0 sm:px-3 sm:py-2 sm:text-xs"
-                              disabled={cmdRunning}
-                              onClick={() => setDismissedCmds((prev) => [...prev, c])}
-                            >
-                              Отмена
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-3">
-                    <div className="text-[11px] text-slate-400">Или выполните любую команду вручную (с подтверждением):</div>
-                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        className="min-h-[44px] flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-slate-200 sm:min-h-0 sm:text-xs"
-                        value={cmdInput}
-                        onChange={(e) => setCmdInput(e.target.value)}
-                        placeholder="bash -lc …"
-                        disabled={cmdRunning}
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <button
-                        type="button"
-                        className="touch-manipulation min-h-[44px] shrink-0 rounded bg-amber-600 px-4 py-3 text-sm font-medium text-black disabled:opacity-50 sm:min-h-0 sm:px-3 sm:py-2 sm:text-xs"
-                        disabled={cmdRunning || !cmdInput.trim()}
-                        onClick={() => void execCommand(cmdInput)}
-                      >
-                        ОК
-                      </button>
-                    </div>
-                  </div>
-                </div>
               )}
-              <button
-                type="button"
-                className="w-full rounded border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-200 hover:bg-red-950/50 disabled:opacity-40"
-                onClick={() => void stopOrchestrator()}
-              >
-                Остановить работу агента
-              </button>
-              <p className="text-[11px] leading-snug text-slate-500">
-                Прерывает фоновый процесс оркестратора на сервере (после «Запустить в работу»). Отдельные сообщения из поля чата этой кнопкой не отменяются.
-              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                  value={cmdInput}
+                  onChange={(e) => setCmdInput(e.target.value)}
+                  placeholder="bash -lc …"
+                  disabled={cmdRunning}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-black disabled:opacity-50"
+                  disabled={cmdRunning || !cmdInput.trim()}
+                  onClick={() => void execCommand(cmdInput)}
+                >
+                  ОК
+                </button>
+              </div>
             </div>
+          )}
+        </div>
+        <div className="shrink-0 border-t border-slate-800 p-2">
+          <p className="mb-1 text-[10px] leading-snug text-slate-500">
+            Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
+            <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля.
+          </p>
+          <div className="flex gap-2">
+            <textarea
+              className="min-h-[2.5rem] max-h-24 min-w-0 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
+              placeholder="Сообщение агенту…"
+              rows={2}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendToAgent();
+                }
+              }}
+              disabled={loadingChat || !session?.id}
+            />
+            <button
+              type="button"
+              className="h-fit shrink-0 self-end rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={loadingChat || !session?.id || !chatInput.trim()}
+              onClick={() => void sendToAgent()}
+            >
+              {loadingChat ? "…" : "Отправить"}
+            </button>
           </div>
-        ) : (
-          <div className="p-4 text-sm text-slate-500">
-            {inSprint ? "Чат тикета отключён — работа ведётся в рамках спринта." : "Пока нет чата. Нажмите «Запустить в работу» в блоке «Управление»."}
-          </div>
-        )}
+        </div>
+      </div>
+    ) : (
+      <div className="flex min-h-0 flex-[2] flex-col border-t border-slate-800 bg-slate-950/90" />
+    );
+
+  return (
+    <div className="max-w-full h-full min-h-0 overflow-hidden [-webkit-tap-highlight-color:transparent]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/30">
+        <section className="flex min-h-0 flex-[3] flex-col overflow-y-auto overflow-x-hidden border-b border-slate-800">
+          {ticketTopSection}
+        </section>
+        {chatMiddleSection}
+        {chatBottomSection}
       </div>
     </div>
   );
