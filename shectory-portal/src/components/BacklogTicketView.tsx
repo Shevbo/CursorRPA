@@ -28,11 +28,15 @@ type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
 const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
-/** GIF из `public/brand/agent-status/` (можно заменить файлами с Windows: Thinking3 / Noduty3 / Error3). */
+/** GIF из `public/brand/agent-status/` (источник: `icons agent status/` + sync перед деплоем). */
+const TICKET_AGENT_STATUS_GIF_VER = "3";
+const ticketAgentStatusGif = (name: "Thinking3" | "Noduty3" | "Error3") =>
+  `/brand/agent-status/${name}.gif?v=${TICKET_AGENT_STATUS_GIF_VER}`;
+
 const TICKET_AGENT_STATUS_GIF: Record<ChatAgentPresence, string> = {
-  thinking: "/brand/agent-status/Thinking3.gif",
-  idle: "/brand/agent-status/Noduty3.gif",
-  error: "/brand/agent-status/Error3.gif",
+  thinking: ticketAgentStatusGif("Thinking3"),
+  idle: ticketAgentStatusGif("Noduty3"),
+  error: ticketAgentStatusGif("Error3"),
 };
 
 function ticketIdLabel(item: ItemWithSprint) {
@@ -1012,27 +1016,28 @@ export function BacklogTicketView({
             </div>
           </div>
         ) : null}
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-950">
-          <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
-          <div
-            className="pointer-events-none absolute inset-0 z-10 flex items-end justify-end"
-            aria-hidden
-          >
-            <div className="mb-2 max-h-[300px] max-w-[calc(100%-1.75rem)] pr-7">
-              <img
-                key={agentPresence}
-                src={TICKET_AGENT_STATUS_GIF[agentPresence]}
-                alt=""
-                width={300}
-                height={300}
-                className="h-[300px] max-h-[300px] w-auto max-w-full object-contain object-[right_bottom]"
-                decoding="async"
-              />
-            </div>
-          </div>
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950">
           <div className="sr-only" role="status" aria-live="polite">
             {agentPresenceTitle}
           </div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
+          </div>
+          <aside
+            className="flex max-w-[min(280px,38vw)] shrink-0 flex-col justify-end border-l border-slate-800/90 bg-slate-950 py-2 pl-2 pr-2 sm:pr-3"
+            aria-hidden
+          >
+            <img
+              key={`${agentPresence}-${TICKET_AGENT_STATUS_GIF_VER}`}
+              src={TICKET_AGENT_STATUS_GIF[agentPresence]}
+              alt=""
+              width={300}
+              height={300}
+              className="pointer-events-none h-[300px] max-h-[min(300px,38vh)] w-auto max-w-full select-none object-contain object-bottom"
+              decoding="async"
+              loading="eager"
+            />
+          </aside>
         </div>
         <div className="flex shrink-0 items-center justify-end border-t border-slate-800 bg-slate-950/95 px-2 py-1">
           <button
