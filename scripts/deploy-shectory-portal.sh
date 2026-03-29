@@ -16,6 +16,10 @@ cd "$ROOT_DIR"
 
 echo "[deploy] repo: $ROOT_DIR"
 
+if [[ -x "$ROOT_DIR/scripts/sync-agent-status-gifs.sh" ]]; then
+  "$ROOT_DIR/scripts/sync-agent-status-gifs.sh"
+fi
+
 if [[ "$DO_GIT_PULL" == "1" ]]; then
   echo "[deploy] git pull"
   git pull
