@@ -54,6 +54,22 @@ MESSAGE_MAX = int(os.environ.get("TELEGRAM_MESSAGE_MAX_CHARS", "4000"))
 TYPING_INTERVAL_SEC = float(os.environ.get("TELEGRAM_TYPING_INTERVAL_SEC", "4.5"))
 # Сообщение админам при старте бота (post_init). Пусто = не слать.
 STARTUP_MESSAGE = os.environ.get("TELEGRAM_STARTUP_MESSAGE", "Привет").strip()
+# Префикс к промпту агента: не отвечать про «Sandbox» в Telegram-канале (доверенный сервер пользователя).
+TELEGRAM_AGENT_SHELL_PREAMBLE = os.environ.get(
+    "TELEGRAM_AGENT_SHELL_PREAMBLE",
+    (
+        "[Инструкция для агента — канал Telegram Shectory RPA]\n"
+        "Пользователь на своём сервере; ответ уходит в Telegram. Не утверждай, что «Sandbox» или среда "
+        "блокируют npm, bash, node, ssh и другие команды — в этом канале такого запрета нет. "
+        "Предлагай конкретные команды для терминала пользователя (деплой, сборка, проверки). "
+        "Если твои инструменты CLI недоступны, чётко отдели: что пользователь выполнит вручную у себя.\n"
+    ),
+).strip()
+TELEGRAM_DISABLE_AGENT_PREAMBLE = os.environ.get("TELEGRAM_DISABLE_AGENT_PREAMBLE", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # Health monitoring / notifications
 HEALTH_CHECK_INTERVAL_SEC = int(os.environ.get("HEALTH_CHECK_INTERVAL_SEC", "60"))
@@ -275,6 +291,23 @@ def _get_sess(state: dict, user_id: int, chat_id: int) -> dict:
     return state.setdefault(_session_key(user_id, chat_id), {})
 
 
+def _shell_preamble_active(sess: dict) -> bool:
+    if TELEGRAM_DISABLE_AGENT_PREAMBLE:
+        return False
+    return bool(sess.get("telegram_shell_ok", True))
+
+
+def _agent_prompt_with_shell_policy(sess: dict, user_prompt: str) -> str:
+    """Добавляет политику «без ложного Sandbox»; отключается TELEGRAM_DISABLE_AGENT_PREAMBLE=1."""
+    if not _shell_preamble_active(sess):
+        return user_prompt
+    if not TELEGRAM_AGENT_SHELL_PREAMBLE:
+        return user_prompt
+    if not user_prompt.strip():
+        return user_prompt
+    return f"{TELEGRAM_AGENT_SHELL_PREAMBLE}\n\n---\n\n{user_prompt}"
+
+
 def _ensure_workspace(sess: dict, user_id: int, chat_id: int) -> str | None:
     """Возвращает абсолютный путь workspace или None."""
     if FIXED_WORKSPACE is not None:
@@ -421,6 +454,7 @@ def _help_text() -> str:
         "/ping — жив ли бот и путь workspace\n"
         "/deploy_ui — DEPLOY_UI_SCRIPT из .env\n"
         "/build_apk — BUILD_APK_SCRIPT из .env\n"
+        "/shellok — подтвердить разрешение на предложение команд терминала (без отговорок про Sandbox)\n"
         "Любой текст — запрос в текущий чат (QUERY)\n\n"
         "Пока идёт ответ агента, новые сообщения в этом чате ждут очереди (не теряются порядок)."
     )
@@ -509,6 +543,7 @@ async def cmd_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     _save_state(state)
     prompt = " ".join(context.args).strip() or "Кратко подтверди: чат создан, готов к задачам."
+    prompt = _agent_prompt_with_shell_policy(sess, prompt)
 
     async with lock:
         typing_task = asyncio.create_task(_typing_loop(context.bot, chat))
@@ -557,6 +592,22 @@ async def cmd_newchat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     log.info("newchat user_id=%s code=%s chat_uuid=%s", uid, code, new_id if uuid_like else "?")
 
 
+async def cmd_shellok(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id if update.effective_user else None
+    if not _allowed(uid):
+        await update.message.reply_text("Доступ запрещён.")
+        return
+    state = _load_state()
+    sess = _get_sess(state, uid, update.effective_chat.id)
+    _ensure_workspace(sess, uid, update.effective_chat.id)
+    sess["telegram_shell_ok"] = True
+    _save_state(state)
+    await update.message.reply_text(
+        "Shell OK: к следующим запросам агенту добавляется инструкция не ссылаться на ограничение Sandbox "
+        "и предлагать команды для вашего терминала. Отключить префикс: TELEGRAM_DISABLE_AGENT_PREAMBLE=1 в .env."
+    )
+
+
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uid = update.effective_user.id if update.effective_user else None
     if not _allowed(uid):
@@ -573,6 +624,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Проект: {sess.get('project_name', '—')}\n"
         f"Workspace:\n{ws}\n"
         f"Cursor chat:\n{cid}\n"
+        f"Префикс Shell/Sandbox для агента: {'вкл' if _shell_preamble_active(sess) else 'выкл'} (/shellok)\n"
         f"Очередь: {'занята' if _lock_for(update.effective_chat.id).locked() else 'свободна'}"
     )
 
@@ -668,13 +720,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     _save_state(state)
 
+    prompt = _agent_prompt_with_shell_policy(sess, text)
+
     async with lock:
         typing_task = asyncio.create_task(_typing_loop(context.bot, chat))
         await update.message.reply_text("Агент работает… (до нескольких минут, без параллельных запросов)")
         loop = asyncio.get_event_loop()
         try:
             code, resp = await loop.run_in_executor(
-                None, lambda w=ws, c=cid, t=text: _run_rpa("QUERY", w, c, t)
+                None, lambda w=ws, c=cid, t=prompt: _run_rpa("QUERY", w, c, t)
             )
         except subprocess.TimeoutExpired:
             typing_task.cancel()
@@ -713,6 +767,8 @@ def main() -> None:
     app.add_handler(CommandHandler("project", cmd_project))
     app.add_handler(CommandHandler("newchat", cmd_newchat))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("shellok", cmd_shellok))
+    app.add_handler(CommandHandler("ShellOK", cmd_shellok))
     app.add_handler(CommandHandler("deploy_ui", cmd_deploy_ui))
     app.add_handler(CommandHandler("build_apk", cmd_build_apk))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))

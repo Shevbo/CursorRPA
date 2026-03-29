@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { BacklogItem, ChatMessage, ChatSession, Sprint } from "@prisma/client";
 import {
   CHAT_POST_MESSAGE_TYPE,
@@ -209,7 +210,7 @@ export function BacklogTicketView({
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
       case "thinking":
-        return "Агент обрабатывает задачу — дождитесь нового сообщения в ленте выше.";
+        return "Я думаю — агент обрабатывает сообщение; дождитесь ответа в ленте выше.";
       case "error":
         return "Похоже на сбой ответа или процесса. Обычно нового вывода без ваших действий не будет — проверьте текст и при необходимости перезапустите агента.";
       default:
@@ -550,8 +551,10 @@ export function BacklogTicketView({
 
   async function sendToAgent() {
     if (!chatInput.trim() || !session?.id) return;
-    setLoadingChat(true);
-    setErr("");
+    flushSync(() => {
+      setLoadingChat(true);
+      setErr("");
+    });
     try {
       const raw = chatInput.trim();
       setChatInput("");
@@ -1027,15 +1030,26 @@ export function BacklogTicketView({
             </svg>
           </button>
           <div
-            className="flex h-[3.75rem] w-[3.75rem] shrink-0 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90"
+            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700/80 bg-slate-900/90"
             role="status"
             aria-live="polite"
             title={agentPresenceTitle}
             aria-label={agentPresenceTitle}
           >
-            <span className={`shectory-agent-presence-emoji ${presenceAnimClass}`} aria-hidden>
-              {presenceEmoji}
-            </span>
+            {agentPresence === "thinking" ? (
+              <img
+                src="/brand/agent-thinking.jpg"
+                alt=""
+                width={64}
+                height={64}
+                className="shectory-agent-presence-thinking h-full w-full object-cover"
+                decoding="async"
+              />
+            ) : (
+              <span className={`shectory-agent-presence-emoji ${presenceAnimClass}`} aria-hidden>
+                {presenceEmoji}
+              </span>
+            )}
           </div>
         </div>
       </div>
