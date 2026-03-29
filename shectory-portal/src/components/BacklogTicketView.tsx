@@ -29,7 +29,7 @@ const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
 /** GIF из `public/brand/agent-status/` (источник: `icons agent status/` + sync перед деплоем). */
-const TICKET_AGENT_STATUS_GIF_VER = "3";
+const TICKET_AGENT_STATUS_GIF_VER = "4";
 const ticketAgentStatusGif = (name: "Thinking3" | "Noduty3" | "Error3") =>
   `/brand/agent-status/${name}.gif?v=${TICKET_AGENT_STATUS_GIF_VER}`;
 
@@ -1016,30 +1016,13 @@ export function BacklogTicketView({
             </div>
           </div>
         ) : null}
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-950">
           <div className="sr-only" role="status" aria-live="polite">
             {agentPresenceTitle}
           </div>
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
-          </div>
-          <aside
-            className="flex max-w-[min(280px,38vw)] shrink-0 flex-col justify-end border-l border-slate-800/90 bg-slate-950 py-2 pl-2 pr-2 sm:pr-3"
-            aria-hidden
-          >
-            <img
-              key={`${agentPresence}-${TICKET_AGENT_STATUS_GIF_VER}`}
-              src={TICKET_AGENT_STATUS_GIF[agentPresence]}
-              alt=""
-              width={300}
-              height={300}
-              className="pointer-events-none h-[300px] max-h-[min(300px,38vh)] w-auto max-w-full select-none object-contain object-bottom"
-              decoding="async"
-              loading="eager"
-            />
-          </aside>
+          <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
         </div>
-        <div className="flex shrink-0 items-center justify-end border-t border-slate-800 bg-slate-950/95 px-2 py-1">
+        <div className="flex shrink-0 items-end justify-end gap-2 border-t border-slate-800 bg-slate-950/95 px-2 py-1">
           <button
             type="button"
             className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-red-900/70 bg-red-950/40 text-red-200 hover:bg-red-950/60 disabled:opacity-30"
@@ -1052,6 +1035,18 @@ export function BacklogTicketView({
               <path d="M6 6h12v12H6V6z" />
             </svg>
           </button>
+          <div className="flex shrink-0 items-end leading-none" aria-hidden>
+            <img
+              key={`${agentPresence}-${TICKET_AGENT_STATUS_GIF_VER}`}
+              src={TICKET_AGENT_STATUS_GIF[agentPresence]}
+              alt=""
+              width={200}
+              height={200}
+              className="pointer-events-none h-[200px] max-h-[200px] w-auto max-w-[min(200px,55vw)] select-none object-contain object-bottom"
+              decoding="async"
+              loading="eager"
+            />
+          </div>
         </div>
       </div>
     ) : (
