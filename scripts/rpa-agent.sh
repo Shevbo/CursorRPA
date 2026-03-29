@@ -8,6 +8,10 @@
 #
 # Примечание: встроенный `agent ls` использует TUI и в неинтерактивном SSH часто падает.
 # LIST_CHATS выводит журнал чатов, создаваемый при NEW_CHAT (~/.config/cursor-rpa/chats.log).
+#
+# В headless-режиме Cursor по умолчанию держит Shell в «песочнице»: часто разрешены только
+# ls/find. Для RPA/Telegram нужен полный shell: --sandbox disabled и --yolo (или --force).
+# Вернуть песочницу: export CURSOR_RPA_AGENT_SANDBOX=enabled
 set -euo pipefail
 
 CMD="${1:-}"
@@ -28,6 +32,15 @@ if [[ -f "$HOME/.config/cursor-rpa/env.sh" ]]; then
 fi
 
 [[ -d "$WS" ]] || { echo "workspace not a directory: $WS" >&2; exit 1; }
+
+if [[ "${CURSOR_RPA_AGENT_SANDBOX:-}" == "enabled" ]]; then
+  RPA_SANDBOX=(--sandbox enabled)
+  RPA_YOLO=()
+else
+  RPA_SANDBOX=(--sandbox disabled)
+  RPA_YOLO=(--yolo)
+fi
+
 mkdir -p "$(dirname "$REGISTRY")"
 touch "$REGISTRY"
 chmod 600 "$REGISTRY" 2>/dev/null || true
@@ -47,17 +60,17 @@ case "$CMD" in
     printf '%s\t%s\t%s\n' "$WS" "$CID" "$(date -Iseconds)" >>"$REGISTRY"
     echo "$CID"
     if [[ -n "$PROMPT" ]]; then
-      agent -p --trust --output-format text --workspace "$WS" --resume "$CID" "$PROMPT"
+      agent -p --trust "${RPA_SANDBOX[@]}" "${RPA_YOLO[@]}" --output-format text --workspace "$WS" --resume "$CID" "$PROMPT"
     fi
     ;;
   QUERY)
-    ARGS=(agent -p --trust --output-format text --workspace "$WS")
+    ARGS=(agent -p --trust "${RPA_SANDBOX[@]}" "${RPA_YOLO[@]}" --output-format text --workspace "$WS")
     [[ -n "$CHAT" ]] && ARGS+=(--resume "$CHAT")
     ARGS+=("$PROMPT")
     exec "${ARGS[@]}"
     ;;
   APPLY)
-    ARGS=(agent -p --trust --force --output-format text --workspace "$WS")
+    ARGS=(agent -p --trust --force "${RPA_SANDBOX[@]}" --output-format text --workspace "$WS")
     [[ -n "$CHAT" ]] && ARGS+=(--resume "$CHAT")
     ARGS+=("$PROMPT")
     exec "${ARGS[@]}"
