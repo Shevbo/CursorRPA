@@ -28,6 +28,13 @@ type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
 const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
+/** GIF из `public/brand/agent-status/` (можно заменить файлами с Windows: Thinking3 / Noduty3 / Error3). */
+const TICKET_AGENT_STATUS_GIF: Record<ChatAgentPresence, string> = {
+  thinking: "/brand/agent-status/Thinking3.gif",
+  idle: "/brand/agent-status/Noduty3.gif",
+  error: "/brand/agent-status/Error3.gif",
+};
+
 function ticketIdLabel(item: ItemWithSprint) {
   return item.ticketKey || item.id.slice(0, 8);
 }
@@ -676,14 +683,6 @@ export function BacklogTicketView({
       ? `/projects/${encodeURIComponent(projectSlug)}/backlog/${encodeURIComponent(itemId)}/chat?sessionId=${encodeURIComponent(session.id)}&embed=thread`
       : "";
 
-  const presenceEmoji = agentPresence === "thinking" ? "🤔" : agentPresence === "error" ? "🤦" : "😴";
-  const presenceAnimClass =
-    agentPresence === "thinking"
-      ? "shectory-agent-presence-thinking"
-      : agentPresence === "error"
-        ? "shectory-agent-presence-error"
-        : "shectory-agent-presence-sleep";
-
   const ticketTopSection = (
     <div className="space-y-2 px-2 py-2 sm:px-3">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
@@ -1013,10 +1012,29 @@ export function BacklogTicketView({
             </div>
           </div>
         ) : null}
-        <div className="relative min-h-0 flex-1 bg-slate-950">
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-950">
           <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
+          <div
+            className="pointer-events-none absolute inset-0 z-10 flex items-end justify-end"
+            aria-hidden
+          >
+            <div className="mb-2 max-h-[300px] max-w-[calc(100%-1.75rem)] pr-7">
+              <img
+                key={agentPresence}
+                src={TICKET_AGENT_STATUS_GIF[agentPresence]}
+                alt=""
+                width={300}
+                height={300}
+                className="h-[300px] max-h-[300px] w-auto max-w-full object-contain object-[right_bottom]"
+                decoding="async"
+              />
+            </div>
+          </div>
+          <div className="sr-only" role="status" aria-live="polite">
+            {agentPresenceTitle}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-800 bg-slate-950/95 px-2 py-1">
+        <div className="flex shrink-0 items-center justify-end border-t border-slate-800 bg-slate-950/95 px-2 py-1">
           <button
             type="button"
             className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-red-900/70 bg-red-950/40 text-red-200 hover:bg-red-950/60 disabled:opacity-30"
@@ -1029,28 +1047,6 @@ export function BacklogTicketView({
               <path d="M6 6h12v12H6V6z" />
             </svg>
           </button>
-          <div
-            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700/80 bg-slate-900/90"
-            role="status"
-            aria-live="polite"
-            title={agentPresenceTitle}
-            aria-label={agentPresenceTitle}
-          >
-            {agentPresence === "thinking" ? (
-              <img
-                src="/brand/agent-thinking.jpg"
-                alt=""
-                width={64}
-                height={64}
-                className="shectory-agent-presence-thinking h-full w-full object-cover"
-                decoding="async"
-              />
-            ) : (
-              <span className={`shectory-agent-presence-emoji ${presenceAnimClass}`} aria-hidden>
-                {presenceEmoji}
-              </span>
-            )}
-          </div>
         </div>
       </div>
     ) : (
