@@ -6,6 +6,7 @@ import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import {
   CHAT_POST_MESSAGE_TYPE,
   type ChatAgentPresence,
+  looksLikeAssistantBusy,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
@@ -92,6 +93,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     if (msgs.length === 0) return "idle";
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
+    if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     return "idle";
   }, [loading, err, session?.messages]);

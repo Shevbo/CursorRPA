@@ -7,6 +7,7 @@ import type { BacklogItem, ChatMessage, ChatSession, Sprint } from "@prisma/clie
 import {
   CHAT_POST_MESSAGE_TYPE,
   type ChatAgentPresence,
+  looksLikeAssistantBusy,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
@@ -202,6 +203,7 @@ export function BacklogTicketView({
     if (msgs.length === 0) return "idle";
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
+    if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     return "idle";
   }, [session?.messages]);
@@ -224,7 +226,7 @@ export function BacklogTicketView({
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
       case "thinking":
-        return "Я думаю — агент обрабатывает сообщение; дождитесь ответа в ленте выше.";
+        return "Думаю — агент обрабатывает сообщение; дождитесь ответа в ленте выше.";
       case "error":
         return "Похоже на сбой ответа или процесса. Обычно нового вывода без ваших действий не будет — проверьте текст и при необходимости перезапустите агента.";
       default:

@@ -9,6 +9,15 @@ export function looksLikeAssistantFailure(content: string): boolean {
   return false;
 }
 
+/** Эвристика: ассистент пишет служебное «ждём/думаю», значит он ещё занят. */
+export function looksLikeAssistantBusy(content: string): boolean {
+  const c = (content ?? "").trimStart();
+  if (!c) return false;
+  if (c.startsWith("⏳")) return true;
+  if (c.includes("[***waiting for answer***]")) return true;
+  return false;
+}
+
 export type ChatAgentPresence = "thinking" | "idle" | "error";
 
 export const CHAT_POST_MESSAGE_TYPE = "shectory-ticket-chat" as const;
