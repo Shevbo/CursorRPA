@@ -1026,13 +1026,13 @@ export function BacklogTicketView({
           <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
           <button
             type="button"
-            className="pointer-events-auto absolute bottom-1.5 right-2 z-10 flex size-[11px] shrink-0 items-center justify-center rounded-sm border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
+            className="pointer-events-auto absolute bottom-1.5 right-[17px] z-10 flex size-[22px] shrink-0 items-center justify-center rounded border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
             disabled={!session?.id}
             onClick={() => void stopOrchestrator()}
             title="Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."
             aria-label="Остановить работу агента"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-[7px]" aria-hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-[14px]" aria-hidden>
               <path d="M6 6h12v12H6V6z" />
             </svg>
           </button>
