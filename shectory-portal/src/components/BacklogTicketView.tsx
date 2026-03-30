@@ -187,6 +187,7 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
+  const lastCommandFailed = looksLikeCommandFailure(lastAssistantContent ?? "");
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
@@ -1125,6 +1126,11 @@ export function BacklogTicketView({
             </div>
           )}
           <div className="flex min-h-0 flex-1 flex-col px-2 py-1.5">
+            {lastCommandFailed ? (
+              <div className="mb-2 shrink-0 rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-[11px] text-red-200">
+                Последняя команда завершилась ошибкой (exit_code ≠ 0). Агент должен продолжать исправлять до успеха.
+              </div>
+            ) : null}
             <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
               Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
               <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля.
