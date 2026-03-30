@@ -18,6 +18,15 @@ export function looksLikeAssistantBusy(content: string): boolean {
   return false;
 }
 
+/** Эвристика: ассистент показал exit_code != 0 → это ошибка выполнения команд. */
+export function looksLikeCommandFailure(content: string): boolean {
+  const c = content ?? "";
+  const m = c.match(/\bexit_code:\s*([0-9-]+)\b/i);
+  if (!m) return false;
+  const code = Number(m[1]);
+  return Number.isFinite(code) && code !== 0;
+}
+
 export type ChatAgentPresence = "thinking" | "idle" | "error";
 
 export const CHAT_POST_MESSAGE_TYPE = "shectory-ticket-chat" as const;

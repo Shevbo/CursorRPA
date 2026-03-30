@@ -8,6 +8,7 @@ import {
   CHAT_POST_MESSAGE_TYPE,
   type ChatAgentPresence,
   looksLikeAssistantBusy,
+  looksLikeCommandFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
@@ -204,6 +205,7 @@ export function BacklogTicketView({
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
     if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
+    if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     return "idle";
   }, [session?.messages]);
