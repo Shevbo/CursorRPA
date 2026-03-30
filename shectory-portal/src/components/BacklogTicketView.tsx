@@ -30,7 +30,9 @@ const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
 /** Статусы агента: `icons agent status/` → sync → `public/brand/agent-status/` (gif или jpg, см. gen-agent-status-ext). */
-const TICKET_AGENT_STATUS_VER = "6";
+const TICKET_AGENT_STATUS_VER = "7";
+/** Высота превью статуса рядом с полем ввода (было 200px, −15%). */
+const TICKET_AGENT_STATUS_IMG_PX = 170;
 const ticketAgentStatusSrc = (name: keyof typeof AGENT_STATUS_EXT) =>
   `/brand/agent-status/${name}.${AGENT_STATUS_EXT[name]}?v=${TICKET_AGENT_STATUS_VER}`;
 
@@ -1022,32 +1024,18 @@ export function BacklogTicketView({
             {agentPresenceTitle}
           </div>
           <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
-        </div>
-        <div className="flex shrink-0 items-end justify-end gap-2 border-t border-slate-800 bg-slate-950/95 px-2 py-1">
           <button
             type="button"
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-red-900/70 bg-red-950/40 text-red-200 hover:bg-red-950/60 disabled:opacity-30"
+            className="pointer-events-auto absolute bottom-1.5 right-2 z-10 flex size-[11px] shrink-0 items-center justify-center rounded-sm border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
             disabled={!session?.id}
             onClick={() => void stopOrchestrator()}
             title="Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."
             aria-label="Остановить работу агента"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-5" aria-hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-[7px]" aria-hidden>
               <path d="M6 6h12v12H6V6z" />
             </svg>
           </button>
-          <div className="flex shrink-0 items-end leading-none" aria-hidden>
-            <img
-              key={`${agentPresence}-${TICKET_AGENT_STATUS_VER}`}
-              src={TICKET_AGENT_STATUS_SRC[agentPresence]}
-              alt=""
-              width={200}
-              height={200}
-              className="pointer-events-none h-[200px] max-h-[200px] w-auto max-w-[min(200px,55vw)] select-none object-contain object-bottom"
-              decoding="async"
-              loading="eager"
-            />
-          </div>
         </div>
       </div>
     ) : (
@@ -1139,7 +1127,7 @@ export function BacklogTicketView({
             </p>
             <div className="flex min-h-0 flex-1 gap-2">
               <textarea
-                className="min-h-0 w-0 flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
+                className="min-h-0 min-w-0 flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
                 placeholder="Сообщение агенту…"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
@@ -1151,14 +1139,29 @@ export function BacklogTicketView({
                 }}
                 disabled={loadingChat || !session?.id}
               />
-              <button
-                type="button"
-                className="h-fit shrink-0 self-end rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={loadingChat || !session?.id || !chatInput.trim()}
-                onClick={() => void sendToAgent()}
-              >
-                {loadingChat ? "…" : "Отправить"}
-              </button>
+              <div className="flex shrink-0 flex-col items-end justify-end gap-1.5">
+                <div className="leading-none" aria-hidden>
+                  <img
+                    key={`${agentPresence}-${TICKET_AGENT_STATUS_VER}`}
+                    src={TICKET_AGENT_STATUS_SRC[agentPresence]}
+                    alt=""
+                    width={TICKET_AGENT_STATUS_IMG_PX}
+                    height={TICKET_AGENT_STATUS_IMG_PX}
+                    className="pointer-events-none w-auto max-w-[min(170px,48vw)] select-none object-contain object-bottom"
+                    style={{ height: TICKET_AGENT_STATUS_IMG_PX, maxHeight: TICKET_AGENT_STATUS_IMG_PX }}
+                    decoding="async"
+                    loading="eager"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  disabled={loadingChat || !session?.id || !chatInput.trim()}
+                  onClick={() => void sendToAgent()}
+                >
+                  {loadingChat ? "…" : "Отправить"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
