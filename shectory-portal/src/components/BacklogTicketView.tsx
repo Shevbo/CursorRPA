@@ -10,6 +10,7 @@ import {
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
+import { AGENT_STATUS_EXT } from "@/generated/agent-status-ext";
 import { BACKLOG_ITEM_STATUSES, BACKLOG_SPRINT_STATUSES } from "@/lib/backlog-constants";
 import {
   buildFollowUpTicketUserPayload,
@@ -28,10 +29,10 @@ type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
 const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
-/** Статусы агента: JPEG в `public/brand/agent-status/` (источник `icons agent status/*.jpg`, sync в деплое). */
-const TICKET_AGENT_STATUS_VER = "5";
-const ticketAgentStatusSrc = (name: "Thinking3" | "Noduty3" | "Error3") =>
-  `/brand/agent-status/${name}.jpg?v=${TICKET_AGENT_STATUS_VER}`;
+/** Статусы агента: `icons agent status/` → sync → `public/brand/agent-status/` (gif или jpg, см. gen-agent-status-ext). */
+const TICKET_AGENT_STATUS_VER = "6";
+const ticketAgentStatusSrc = (name: keyof typeof AGENT_STATUS_EXT) =>
+  `/brand/agent-status/${name}.${AGENT_STATUS_EXT[name]}?v=${TICKET_AGENT_STATUS_VER}`;
 
 const TICKET_AGENT_STATUS_SRC: Record<ChatAgentPresence, string> = {
   thinking: ticketAgentStatusSrc("Thinking3"),
