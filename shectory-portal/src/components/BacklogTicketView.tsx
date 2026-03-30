@@ -28,15 +28,15 @@ type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
 const AUTO_SHELL_UNTIL_KEY = "shectory_backlog_auto_shell_until";
 const AUTO_SHELL_MS = 2 * 60 * 60 * 1000;
 
-/** GIF из `public/brand/agent-status/` (источник: `icons agent status/` + sync перед деплоем). */
-const TICKET_AGENT_STATUS_GIF_VER = "4";
-const ticketAgentStatusGif = (name: "Thinking3" | "Noduty3" | "Error3") =>
-  `/brand/agent-status/${name}.gif?v=${TICKET_AGENT_STATUS_GIF_VER}`;
+/** Статусы агента: JPEG в `public/brand/agent-status/` (источник `icons agent status/*.jpg`, sync в деплое). */
+const TICKET_AGENT_STATUS_VER = "5";
+const ticketAgentStatusSrc = (name: "Thinking3" | "Noduty3" | "Error3") =>
+  `/brand/agent-status/${name}.jpg?v=${TICKET_AGENT_STATUS_VER}`;
 
-const TICKET_AGENT_STATUS_GIF: Record<ChatAgentPresence, string> = {
-  thinking: ticketAgentStatusGif("Thinking3"),
-  idle: ticketAgentStatusGif("Noduty3"),
-  error: ticketAgentStatusGif("Error3"),
+const TICKET_AGENT_STATUS_SRC: Record<ChatAgentPresence, string> = {
+  thinking: ticketAgentStatusSrc("Thinking3"),
+  idle: ticketAgentStatusSrc("Noduty3"),
+  error: ticketAgentStatusSrc("Error3"),
 };
 
 function ticketIdLabel(item: ItemWithSprint) {
@@ -1037,8 +1037,8 @@ export function BacklogTicketView({
           </button>
           <div className="flex shrink-0 items-end leading-none" aria-hidden>
             <img
-              key={`${agentPresence}-${TICKET_AGENT_STATUS_GIF_VER}`}
-              src={TICKET_AGENT_STATUS_GIF[agentPresence]}
+              key={`${agentPresence}-${TICKET_AGENT_STATUS_VER}`}
+              src={TICKET_AGENT_STATUS_SRC[agentPresence]}
               alt=""
               width={200}
               height={200}
