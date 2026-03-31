@@ -77,6 +77,38 @@ HEALTH_REPORT_INTERVAL_SEC = int(os.environ.get("HEALTH_REPORT_INTERVAL_SEC", st
 HEALTH_RAM_CRIT_FREE_PCT = float(os.environ.get("HEALTH_RAM_CRIT_FREE_PCT", "8"))   # free% below => critical
 HEALTH_HDD_CRIT_FREE_PCT = float(os.environ.get("HEALTH_HDD_CRIT_FREE_PCT", "5"))   # free% below => critical
 
+# Raspberry Pi: Syslog (4444), Pingmaster (4555); отчёт раз в PI_MONITOR_INTERVAL_SEC (по умолчанию 5 мин)
+PI_MONITOR_HOST = os.environ.get("PI_MONITOR_HOST", "").strip()
+PI_SYSLOG_PORT = int(os.environ.get("PI_SYSLOG_PORT", "4444"))
+PI_PINGMASTER_PORT = int(os.environ.get("PI_PINGMASTER_PORT", "4555"))
+PI_MONITOR_INTERVAL_SEC = int(os.environ.get("PI_MONITOR_INTERVAL_SEC", str(5 * 60)))
+PI_MONITOR_SSH = os.environ.get("PI_MONITOR_SSH", "").strip()
+PI_MONITOR_TCP_TIMEOUT = float(os.environ.get("PI_MONITOR_TCP_TIMEOUT", "3"))
+PI_MONITOR_SSH_TIMEOUT_SEC = int(os.environ.get("PI_MONITOR_SSH_TIMEOUT_SEC", "12"))
+
+# Удалённый Python для снимка CPU/RAM/диска на Pi (через PI_MONITOR_SSH)
+_PI_REMOTE_MEM_DISK_JSON = (
+    "python3 - <<'PY'\n"
+    "import os, json\n"
+    "from pathlib import Path\n"
+    "def mem():\n"
+    "  total=avail=0\n"
+    "  for line in Path('/proc/meminfo').read_text().splitlines():\n"
+    "    if line.startswith('MemTotal:'): total=int(line.split()[1])*1024\n"
+    "    if line.startswith('MemAvailable:'): avail=int(line.split()[1])*1024\n"
+    "  return total, avail\n"
+    "def disk_root():\n"
+    "  import shutil\n"
+    "  du=shutil.disk_usage('/')\n"
+    "  return du.total, du.free\n"
+    "t,a=mem(); dt,df=disk_root();\n"
+    "l1,l5,l15=os.getloadavg() if hasattr(os,'getloadavg') else (0.0,0.0,0.0)\n"
+    "ram_free_pct=(a/t*100.0) if t else 0.0\n"
+    "hdd_free_pct=(df/dt*100.0) if dt else 0.0\n"
+    "print(json.dumps({'cpu':{'load1':l1,'load5':l5,'load15':l15}, 'ram':{'total':t,'avail':a,'free_pct':ram_free_pct}, 'hdd':{'total':dt,'free':df,'free_pct':hdd_free_pct}}, ensure_ascii=False))\n"
+    "PY"
+)
+
 
 def _hour_key(ts: float | None = None) -> str:
     t = time.gmtime(ts or time.time())
@@ -146,7 +178,10 @@ def _ssh_hoster_health() -> dict:
             "print(json.dumps({'cpu':{'load1':l1,'load5':l5,'load15':l15}, 'ram':{'free_pct':ram_free_pct}, 'hdd':{'free_pct':hdd_free_pct}}, ensure_ascii=False))\n"
             "PY"
         )
-        rc, stdout, stderr = _run_bash(f"ssh -o BatchMode=yes -o ConnectTimeout=4 hoster {shlex.quote(inner)}")
+        rc, stdout, stderr = _run_bash(
+            f"ssh -o BatchMode=yes -o ConnectTimeout=4 hoster {shlex.quote(inner)}",
+            timeout_sec=25,
+        )
         if rc != 0:
             return {"ok": False, "error": (stderr or stdout or f"rc={rc}").strip()}
         import json
@@ -164,7 +199,10 @@ def _db_ready_via_hoster() -> dict:
             "if command -v pg_isready >/dev/null 2>&1; then pg_isready -h 127.0.0.1 -p 5432; echo OK; "
             "else (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && echo OK || echo FAIL; fi"
         )
-        rc, stdout, stderr = _run_bash(f"ssh -o BatchMode=yes -o ConnectTimeout=4 hoster {shlex.quote(script)}")
+        rc, stdout, stderr = _run_bash(
+            f"ssh -o BatchMode=yes -o ConnectTimeout=4 hoster {shlex.quote(script)}",
+            timeout_sec=25,
+        )
         ok = "OK" in (stdout or "")
         return {"ok": bool(ok), "error": (stderr or "").strip()}
     except Exception as e:
@@ -203,6 +241,168 @@ def _health_text_hoster(h: dict, db: dict) -> str:
         f"HDD free: {_fmt_pct(float(hdd.get('free_pct',0.0)))}\n"
         f"DB: {'ok' if db.get('ok') else 'down'}"
     )
+
+
+def _ssh_pi_health() -> dict:
+    """Снимок CPU/RAM/диска на Pi по SSH (PI_MONITOR_SSH)."""
+    if not PI_MONITOR_SSH:
+        return {"skipped": True, "ok": None}
+    try:
+        rc, stdout, stderr = _run_bash(
+            f"{PI_MONITOR_SSH} {shlex.quote(_PI_REMOTE_MEM_DISK_JSON)}",
+            timeout_sec=max(5, PI_MONITOR_SSH_TIMEOUT_SEC),
+        )
+        if rc != 0:
+            return {"ok": False, "error": (stderr or stdout or f"rc={rc}").strip()[:400]}
+        import json
+
+        j = json.loads(stdout.strip() or "{}")
+        return {"ok": True, **j}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:400]}
+
+
+async def _tcp_port_open(host: str, port: int, timeout: float) -> tuple[bool, str]:
+    try:
+        _reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True, "ok"
+    except asyncio.TimeoutError:
+        return False, "timeout"
+    except OSError as e:
+        return False, str(e)[:120]
+    except Exception as e:
+        return False, str(e)[:120]
+
+
+def _pi_monitor_format_message(
+    host: str,
+    pi: dict,
+    syslog_ok: bool,
+    syslog_err: str,
+    ping_ok: bool,
+    ping_err: str,
+    alerts: list[str],
+) -> str:
+    lines: list[str] = [
+        f"📟 Raspberry Pi · {host} (интервал {PI_MONITOR_INTERVAL_SEC // 60} мин)",
+    ]
+    if alerts:
+        lines.append("")
+        lines.extend(alerts)
+
+    if pi.get("skipped"):
+        lines.append(
+            "\nРесурсы: SSH к Pi не задан (PI_MONITOR_SSH) — только TCP с машины бота."
+        )
+    elif not pi.get("ok"):
+        lines.append(f"\n🏥 Ресурсы Pi: не сняты ({pi.get('error', '?')})")
+    else:
+        cpu = pi.get("cpu", {})
+        ram = pi.get("ram", {})
+        hdd = pi.get("hdd", {})
+        lines.append(
+            "\n🏥 Ресурсы Pi:\n"
+            f"  CPU load: {float(cpu.get('load1', 0)):.2f} / {float(cpu.get('load5', 0)):.2f} / {float(cpu.get('load15', 0)):.2f}\n"
+            f"  RAM свободно: {_fmt_pct(float(ram.get('free_pct', 0.0)))}\n"
+            f"  Диск / свободно: {_fmt_pct(float(hdd.get('free_pct', 0.0)))}"
+        )
+
+    def svc_line(name: str, port: int, ok: bool, err: str) -> str:
+        if ok:
+            st = "✅ OK"
+        else:
+            st = f"❌ ({err})"
+        return f"  · {name} :{port} — {st}"
+
+    lines.append("\nСервисы:")
+    lines.append(svc_line("Syslog", PI_SYSLOG_PORT, syslog_ok, syslog_err))
+    lines.append(svc_line("Pingmaster", PI_PINGMASTER_PORT, ping_ok, ping_err))
+    if not syslog_ok or not ping_ok:
+        lines.append("\n⚠️ Сбой сервисов — проверьте процессы на Pi.")
+
+    low_ram = False
+    low_disk = False
+    if pi.get("ok"):
+        ram = pi.get("ram", {})
+        hdd = pi.get("hdd", {})
+        low_ram = float(ram.get("free_pct", 100.0)) < HEALTH_RAM_CRIT_FREE_PCT
+        low_disk = float(hdd.get("free_pct", 100.0)) < HEALTH_HDD_CRIT_FREE_PCT
+    if low_ram or low_disk:
+        lines.append(
+            "\n🔻 Критично мало ресурсов: "
+            + ("RAM " if low_ram else "")
+            + ("диск " if low_disk else "")
+            + "(пороги как HEALTH_RAM/HDD_CRIT_FREE_PCT)."
+        )
+    return "\n".join(lines)
+
+
+async def _pi_monitor_loop(application: Application) -> None:
+    """Периодический отчёт о Pi + всплеск алертов при падении/восстановлении портов."""
+    if not PI_MONITOR_HOST:
+        return
+    if not ALLOWED:
+        log.info("Pi monitor: PI_MONITOR_HOST задан, но ALLOWED пуст — мониторинг не шлём")
+        return
+    log.info(
+        "Pi monitor: TCP %s:%s %s:%s, интервал %ss",
+        PI_MONITOR_HOST,
+        PI_SYSLOG_PORT,
+        PI_MONITOR_HOST,
+        PI_PINGMASTER_PORT,
+        PI_MONITOR_INTERVAL_SEC,
+    )
+    await asyncio.sleep(10)
+    while True:
+        try:
+            syslog_ok, syslog_err = await _tcp_port_open(
+                PI_MONITOR_HOST, PI_SYSLOG_PORT, PI_MONITOR_TCP_TIMEOUT
+            )
+            ping_ok, ping_err = await _tcp_port_open(
+                PI_MONITOR_HOST, PI_PINGMASTER_PORT, PI_MONITOR_TCP_TIMEOUT
+            )
+            loop = asyncio.get_event_loop()
+            pi_res: dict = await loop.run_in_executor(None, _ssh_pi_health)
+
+            state = _load_state()
+            prev_sys = state.get("pi_mon_syslog_ok")
+            prev_ping = state.get("pi_mon_ping_ok")
+            alerts: list[str] = []
+            if prev_sys is True and not syslog_ok:
+                alerts.append(f"🚨 СБОЙ: Syslog :{PI_SYSLOG_PORT} не отвечает.")
+            if prev_ping is True and not ping_ok:
+                alerts.append(f"🚨 СБОЙ: Pingmaster :{PI_PINGMASTER_PORT} не отвечает.")
+            if prev_sys is False and syslog_ok:
+                alerts.append("✅ Syslog снова доступен.")
+            if prev_ping is False and ping_ok:
+                alerts.append("✅ Pingmaster снова доступен.")
+
+            state["pi_mon_syslog_ok"] = syslog_ok
+            state["pi_mon_ping_ok"] = ping_ok
+            _save_state(state)
+
+            text = _pi_monitor_format_message(
+                PI_MONITOR_HOST,
+                pi_res,
+                syslog_ok,
+                syslog_err,
+                ping_ok,
+                ping_err,
+                alerts,
+            )
+            for admin_id in sorted(ALLOWED):
+                try:
+                    await application.bot.send_message(chat_id=admin_id, text=text)
+                except Exception as e:
+                    log.warning("pi monitor send failed admin_id=%s: %s", admin_id, e)
+        except Exception as e:
+            log.warning("pi monitor loop error: %s", e)
+        await asyncio.sleep(PI_MONITOR_INTERVAL_SEC)
 
 
 async def _health_loop(application: Application) -> None:
@@ -341,7 +541,9 @@ def _subprocess_cwd() -> str:
     return "/"
 
 
-def _run_bash(script: str, env_extra: dict | None = None) -> tuple[int, str, str]:
+def _run_bash(
+    script: str, env_extra: dict | None = None, timeout_sec: int | None = None
+) -> tuple[int, str, str]:
     env = os.environ.copy()
     if env_extra:
         env.update(env_extra)
@@ -352,7 +554,7 @@ def _run_bash(script: str, env_extra: dict | None = None) -> tuple[int, str, str
         ["bash", "-lc", script],
         capture_output=True,
         text=True,
-        timeout=AGENT_TIMEOUT,
+        timeout=timeout_sec if timeout_sec is not None else AGENT_TIMEOUT,
         env=env,
         cwd=_subprocess_cwd(),
     )
@@ -436,8 +638,10 @@ async def _post_init(application: Application) -> None:
         except Exception as e:
             log.warning("Не удалось отправить привет admin_id=%s: %s", admin_id, e)
 
-    # start background health notifier
+    # фон: Shectory/hoster health + опционально Pi (Syslog/Pingmaster)
     asyncio.create_task(_health_loop(application))
+    if PI_MONITOR_HOST:
+        asyncio.create_task(_pi_monitor_loop(application))
 
 
 def _help_text() -> str:
@@ -446,9 +650,16 @@ def _help_text() -> str:
         if FIXED_WORKSPACE is not None
         else "Сначала: /project <имя>, затем /newchat.\n"
     )
+    pi_note = ""
+    if PI_MONITOR_HOST:
+        pi_note = (
+            f"\nМонитор Pi: {PI_MONITOR_HOST} — Syslog :{PI_SYSLOG_PORT}, Pingmaster :{PI_PINGMASTER_PORT} "
+            f"(отчёт каждые {max(1, PI_MONITOR_INTERVAL_SEC // 60)} мин админам).\n"
+        )
     return (
         "Пилот Cursor RPA\n\n"
         f"{fixed}"
+        f"{pi_note}"
         "/newchat [текст] — новый чат Cursor (сохраняю UUID)\n"
         "/status — workspace и активный chat id\n"
         "/ping — жив ли бот и путь workspace\n"

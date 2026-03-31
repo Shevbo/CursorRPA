@@ -41,6 +41,16 @@
 
 Пример юнита: [`cursor-telegram-bridge.service.example`](systemd/cursor-telegram-bridge.service.example) — скопируйте в `/etc/systemd/system/`, поправьте пути и пользователя, `sudo systemctl daemon-reload && sudo systemctl enable --now cursor-telegram-bridge`.
 
+## Монитор Raspberry Pi (Syslog / Pingmaster)
+
+Если задан **`PI_MONITOR_HOST`** (IP или DNS, доступный **с сервера, где крутится бот**), раз в **`PI_MONITOR_INTERVAL_SEC`** (по умолчанию **300** с = 5 мин) всем **`TELEGRAM_ALLOWED_USER_IDS`** уходит сообщение:
+
+- TCP **Syslog** (порт **`PI_SYSLOG_PORT`**, по умолчанию 4444) и **Pingmaster** (**`PI_PINGMASTER_PORT`**, по умолчанию 4555).
+- Строки **🚨 СБОЙ** / **✅ восстановлено** при смене доступности порта (чтобы не пропустить сбой между тиками).
+- Опционально **CPU / RAM / диск** на Pi, если задан **`PI_MONITOR_SSH`** — полная команда вида `ssh -o BatchMode=yes -o ConnectTimeout=5 user@pi-host` (ключи без пароля с машины бота).
+
+Без `PI_MONITOR_HOST` цикл мониторинга Pi не запускается.
+
 ## Переменные окружения
 
 См. [`config.example.env`](config.example.env).
