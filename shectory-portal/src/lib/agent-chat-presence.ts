@@ -38,8 +38,12 @@ export function looksLikeOutputFailure(stdout: string, stderr: string): boolean 
   const low = out.toLowerCase();
   // Strong indicators
   if (/\bbuild error occurred\b/i.test(out)) return true;
+  if (/\bfailed to compile\b/i.test(out)) return true;
+  if (/\bbuild failed because of\b/i.test(out)) return true;
   if (/\bfailed to load\b/i.test(out)) return true;
   if (/\bcannot find module\b/i.test(out)) return true;
+  if (/\bmodule not found\b/i.test(out)) return true;
+  if (/\bcan['’]?t resolve\b/i.test(out)) return true;
   if (/\bmodule_not_found\b/i.test(out)) return true;
   if (/\bunknown or unexpected option\b/i.test(out)) return true;
   if (/\b(error|exception):/i.test(out)) return true;
