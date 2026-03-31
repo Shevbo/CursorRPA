@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import { Readable } from "node:stream";
+import crypto from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 
 const HOME = process.env.HOME ?? "/home/shectory";
 const AGENT_BIN = process.env.AGENT_BIN ?? `${HOME}/.local/bin/agent`;
@@ -65,7 +67,8 @@ function slimAgentEnv() {
 }
 
 /**
- * Промпт в stdin (аргумент «-»), а не в argv — иначе длинный контекст даёт spawn E2BIG.
+ * Cursor agent CLI currently does NOT take the prompt from stdin.
+ * To avoid argv E2BIG on large prompts, we spill prompt into a temp file and pass a short wrapper prompt instead.
  * @param {string} workspacePath
  * @param {string} prompt
  * @param {number} timeoutMs
@@ -78,7 +81,26 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
   const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath];
   const m = String(modelId || "").trim();
   if (m) args.push("--model", m);
-  args.push("-");
+
+  const rawPrompt = String(prompt ?? "");
+  let finalPrompt = rawPrompt;
+  const PROMPT_ARG_MAX = Number(process.env.AGENT_PROMPT_ARG_MAX || "6000") || 6000;
+  if (rawPrompt.length > PROMPT_ARG_MAX) {
+    const dir = path.join(os.tmpdir(), "shectory-agent-prompts");
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch {
+      // ignore
+    }
+    const hash = crypto.createHash("sha256").update(rawPrompt, "utf8").digest("hex").slice(0, 16);
+    const file = path.join(dir, `prompt-${Date.now()}-${hash}.txt`);
+    fs.writeFileSync(file, rawPrompt, "utf8");
+    finalPrompt =
+      "В рабочей копии открыт вспомогательный файл с полным промптом.\n" +
+      `1) Открой и прочитай файл: ${file}\n` +
+      "2) Строго выполни инструкции из этого файла.\n";
+  }
+  args.push(finalPrompt);
   return new Promise((resolve) => {
     const child = spawn(AGENT_BIN, args, { env, shell: false });
     let stdout = "";
@@ -98,18 +120,6 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
       }, 5000);
       resolve({ ok: false, stdout, stderr: stderr + "\n[timeout]" });
     }, timeoutMs);
-
-    const payload = Buffer.from(prompt ?? "", "utf8");
-    const src = Readable.from([payload]);
-    src.on("error", (e) => {
-      clearTimeout(t);
-      resolve({ ok: false, stdout, stderr: stderr + String(e) });
-    });
-    child.stdin?.on("error", (e) => {
-      clearTimeout(t);
-      resolve({ ok: false, stdout, stderr: stderr + String(e) });
-    });
-    src.pipe(child.stdin);
 
     child.stdout?.on("data", (d) => (stdout += d.toString()));
     child.stderr?.on("data", (d) => (stderr += d.toString()));
