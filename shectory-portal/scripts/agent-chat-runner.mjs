@@ -57,11 +57,30 @@ async function main() {
   const payload = String(payloadArg || "").trim();
   if (payload.startsWith("msg:")) {
     const msgId = payload.slice("msg:".length).trim();
-    const m = await prisma.chatMessage.findUnique({ where: { id: msgId }, select: { role: true, content: true } });
-    if (m?.role === "user") prompt = String(m.content || "");
+    const m = await prisma.chatMessage.findFirst({
+      where: { id: msgId, sessionId, role: "user" },
+      select: { content: true },
+    });
+    prompt = String(m?.content || "");
   } else {
     // Backward compatibility: base64 prompt in argv.
     prompt = Buffer.from(payload, "base64").toString("utf8");
+  }
+
+  if (!prompt.trim()) {
+    await prisma.chatMessage.create({
+      data: {
+        sessionId,
+        role: "assistant",
+        content:
+          "### Ошибка доставки сообщения агенту\n\n" +
+          "Текст user-сообщения для исполнителя оказался пустым (internal). " +
+          "Автозапуск остановлен, чтобы избежать ложных ответов и зацикливания.\n\n" +
+          `payload=${payload.slice(0, 200)}\n`,
+      },
+    });
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    return;
   }
 
   await prisma.chatMessage.create({
