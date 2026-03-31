@@ -21,6 +21,7 @@ import {
   userRequestedTicketContextRefresh,
 } from "@/lib/ticket-chat-context";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
+import { CHAT_ATTACHMENT_MAX_FILES } from "@/lib/chat-attachments";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
 type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
@@ -69,6 +70,8 @@ export function BacklogTicketView({
   const [item, setItem] = useState<ItemWithSprint>(initialItem as ItemWithSprint);
   const [session, setSession] = useState<SessionWithMessages | null>(initialSession as SessionWithMessages | null);
   const [chatInput, setChatInput] = useState("");
+  const [pendingChatFiles, setPendingChatFiles] = useState<File[]>([]);
+  const chatAttachInputRef = useRef<HTMLInputElement | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -573,7 +576,7 @@ export function BacklogTicketView({
   }
 
   async function sendToAgent() {
-    if (!chatInput.trim() || !session?.id) return;
+    if ((!chatInput.trim() && pendingChatFiles.length === 0) || !session?.id) return;
     flushSync(() => {
       setLoadingChat(true);
       setErr("");
@@ -600,18 +603,29 @@ export function BacklogTicketView({
               userMessage: body,
             })
           : buildFollowUpTicketUserPayload(body);
-      const r = await fetch("/api/agent/chat", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectSlug, sessionId: session.id, message }),
-      });
+      let r: Response;
+      if (pendingChatFiles.length > 0) {
+        const fd = new FormData();
+        fd.set("projectSlug", projectSlug);
+        fd.set("sessionId", session.id);
+        fd.set("message", message);
+        for (const f of pendingChatFiles) fd.append("files", f, f.name);
+        r = await fetch("/api/agent/chat", { method: "POST", credentials: "include", body: fd });
+      } else {
+        r = await fetch("/api/agent/chat", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectSlug, sessionId: session.id, message }),
+        });
+      }
       const j = (await r.json().catch(() => ({}))) as {
         error?: string;
         userMsg?: { id: string };
         timeoutMs?: number;
       };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setPendingChatFiles([]);
       const uid = j.userMsg?.id;
       if (uid) {
         const t = (j.timeoutMs ?? 1_800_000) + 120_000;
@@ -1137,8 +1151,41 @@ export function BacklogTicketView({
             ) : null}
             <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
               Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
-              <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля.
+              <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля. Вложения
+              (до {CHAT_ATTACHMENT_MAX_FILES} файлов) копируются в workspace проекта — агент читает их по путям из
+              служебной папки.
             </p>
+            <input
+              ref={chatAttachInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const list = e.target.files ? Array.from(e.target.files) : [];
+                setPendingChatFiles((prev) => [...prev, ...list].slice(0, CHAT_ATTACHMENT_MAX_FILES));
+                e.target.value = "";
+              }}
+            />
+            {pendingChatFiles.length > 0 ? (
+              <div className="mb-1 flex max-h-16 flex-wrap gap-1 overflow-y-auto text-[10px]">
+                {pendingChatFiles.map((f, i) => (
+                  <span
+                    key={`${f.name}-${i}`}
+                    className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-slate-300"
+                  >
+                    {f.name}
+                    <button
+                      type="button"
+                      className="text-slate-500 hover:text-red-300"
+                      aria-label="Убрать файл"
+                      onClick={() => setPendingChatFiles((prev) => prev.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="flex min-h-0 flex-1 gap-2">
               <textarea
                 className="min-h-0 min-w-0 flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
@@ -1167,14 +1214,26 @@ export function BacklogTicketView({
                     loading="eager"
                   />
                 </div>
-                <button
-                  type="button"
-                  className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  disabled={loadingChat || !session?.id || !chatInput.trim()}
-                  onClick={() => void sendToAgent()}
-                >
-                  {loadingChat ? "…" : "Отправить"}
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    className="shrink-0 rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                    disabled={loadingChat || !session?.id || pendingChatFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
+                    onClick={() => chatAttachInputRef.current?.click()}
+                  >
+                    Вложения
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    disabled={
+                      loadingChat || !session?.id || (!chatInput.trim() && pendingChatFiles.length === 0)
+                    }
+                    onClick={() => void sendToAgent()}
+                  >
+                    {loadingChat ? "…" : "Отправить"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

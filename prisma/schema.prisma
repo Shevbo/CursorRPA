@@ -120,6 +120,8 @@ model ChatMessage {
   session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   role      String
   content   String      @db.Text
+  /// JSON: [{ "name": "log.txt", "relPath": ".shectory-chat-attachments/…" }] — файлы в workspace проекта для чтения агентом
+  attachmentsJson String @default("[]") @map("attachments_json") @db.Text
   createdAt DateTime    @default(now()) @map("created_at")
 
   @@index([sessionId])

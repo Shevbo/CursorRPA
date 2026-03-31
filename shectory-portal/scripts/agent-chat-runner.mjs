@@ -43,6 +43,39 @@ function windowMessagesForAgent(msgs) {
   return [firstUser, ...tail.filter((m) => m.id !== firstUser.id)];
 }
 
+function parseAttachmentsJson(raw) {
+  try {
+    const j = JSON.parse(String(raw || "[]"));
+    if (!Array.isArray(j)) return [];
+    return j
+      .filter((x) => x && typeof x.relPath === "string")
+      .map((x) => ({
+        name: String(x.name || "file"),
+        relPath: String(x.relPath).replace(/\\/g, "/"),
+      }))
+      .filter((x) => x.relPath && !x.relPath.includes(".."));
+  } catch {
+    return [];
+  }
+}
+
+function formatAttachmentsBlock(items) {
+  if (!items.length) return "";
+  const lines = items.map((x) => `- ${x.relPath} (имя: ${x.name})`).join("\n");
+  return (
+    `\n\n━━ Вложения пользователя (прочитай файлы по путям относительно корня workspace) ━━\n` + `${lines}`
+  );
+}
+
+/** Текст для промпта агента: сообщение + пути вложений из workspace. */
+function augmentUserContent(content, attachmentsJson) {
+  const items = parseAttachmentsJson(attachmentsJson);
+  const base = String(content || "").trim();
+  const block = formatAttachmentsBlock(items);
+  if (!base && !block) return "";
+  return base + block;
+}
+
 async function main() {
   const [sessionId, workspacePath, payloadArg, timeoutStr] = process.argv.slice(2);
   if (!sessionId || !workspacePath || !payloadArg) {
@@ -59,9 +92,9 @@ async function main() {
     const msgId = payload.slice("msg:".length).trim();
     const m = await prisma.chatMessage.findFirst({
       where: { id: msgId, sessionId, role: "user" },
-      select: { content: true },
+      select: { content: true, attachmentsJson: true },
     });
-    prompt = String(m?.content || "");
+    prompt = augmentUserContent(m?.content, m?.attachmentsJson);
   } else {
     // Backward compatibility: base64 prompt in argv.
     prompt = Buffer.from(payload, "base64").toString("utf8");
@@ -91,14 +124,14 @@ async function main() {
     where: { sessionId },
     orderBy: { createdAt: "desc" },
     take: DB_TAIL,
-    select: { id: true, role: true, content: true },
+    select: { id: true, role: true, content: true, attachmentsJson: true },
   });
   let raw = tailDesc.reverse();
 
   const firstUserRow = await prisma.chatMessage.findFirst({
     where: { sessionId, role: "user" },
     orderBy: { createdAt: "asc" },
-    select: { id: true, role: true, content: true },
+    select: { id: true, role: true, content: true, attachmentsJson: true },
   });
   if (firstUserRow && !raw.some((m) => m.id === firstUserRow.id)) {
     raw = [firstUserRow, ...raw];
@@ -111,7 +144,11 @@ async function main() {
   if (last?.role === "user") {
     const history = forAgent.slice(0, -1);
     const historyText = history
-      .map((m) => (m.role === "user" ? `Пользователь:\n${m.content}` : `Ассистент:\n${m.content}`))
+      .map((m) =>
+        m.role === "user"
+          ? `Пользователь:\n${augmentUserContent(m.content, m.attachmentsJson)}`
+          : `Ассистент:\n${m.content}`
+      )
       .join("\n\n---\n\n");
     if (historyText.length > 0) {
       composed = `${historyText}\n\n---\n\nНовое сообщение пользователя:\n${prompt}`;

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CHAT_ATTACHMENT_MAX_FILES, parseChatAttachmentsJson } from "@/lib/chat-attachments";
 import { useSearchParams } from "next/navigation";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import {
@@ -20,7 +21,7 @@ import {
 } from "@/lib/ticket-chat-context";
 import { formatMsgTime } from "@/lib/format-utils";
 
-type Msg = { id: string; role: string; content: string; createdAt: string };
+type Msg = { id: string; role: string; content: string; createdAt: string; attachmentsJson?: string | null };
 type Session = { id: string; title?: string; messages: Msg[] };
 type Ticket = { id: string; ticketKey?: string | null; title: string; description?: string | null; descriptionPrompt?: string };
 type MePayload = { ok: boolean; user: { email: string; role: string; fullName?: string } | null };
@@ -34,6 +35,7 @@ function messagesListEqual(a: Msg[], b: Msg[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i].id !== b[i].id || a[i].content !== b[i].content) return false;
+    if ((a[i].attachmentsJson || "") !== (b[i].attachmentsJson || "")) return false;
   }
   return true;
 }
@@ -58,6 +60,8 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const [me, setMe] = useState<MePayload["user"] | null>(null);
   const [agentSpec, setAgentSpec] = useState<{ executor: string; auditor: string } | null>(null);
   const [input, setInput] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const loadInFlightRef = useRef(false);
@@ -83,7 +87,8 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     const m = session?.messages;
     if (!m?.length) return "";
     const last = m[m.length - 1];
-    return `${m.length}:${last.id}:${last.content.length}`;
+    const att = (last.attachmentsJson || "").length;
+    return `${m.length}:${last.id}:${last.content.length}:${att}`;
   }, [session?.messages]);
 
   const chatAgentPresence = useMemo((): ChatAgentPresence => {
@@ -320,7 +325,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   }
 
   async function send() {
-    if (!input.trim() || !sessionId) return;
+    if ((!input.trim() && pendingFiles.length === 0) || !sessionId) return;
     setLoading(true);
     setErr("");
     try {
@@ -331,18 +336,29 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       const latestTicket = (tj as { item?: Ticket }).item ?? ticket;
       if ((tj as { item?: Ticket }).item) setTicket((tj as { item: Ticket }).item);
       const ctx = buildOutgoingPayload(raw, latestTicket ?? null, session);
-      const r = await fetch("/api/agent/chat", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectSlug: params.slug, sessionId, message: ctx }),
-      });
+      let r: Response;
+      if (pendingFiles.length > 0) {
+        const fd = new FormData();
+        fd.set("projectSlug", params.slug);
+        fd.set("sessionId", sessionId);
+        fd.set("message", ctx);
+        for (const f of pendingFiles) fd.append("files", f, f.name);
+        r = await fetch("/api/agent/chat", { method: "POST", credentials: "include", body: fd });
+      } else {
+        r = await fetch("/api/agent/chat", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectSlug: params.slug, sessionId, message: ctx }),
+        });
+      }
       const j = (await r.json().catch(() => ({}))) as {
         error?: string;
         userMsg?: { id: string };
         timeoutMs?: number;
       };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setPendingFiles([]);
       const uid = j.userMsg?.id;
       stickBottomRef.current = true;
       if (uid) {
@@ -409,20 +425,50 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                   {m.role === "user" &&
                   m.content.startsWith(TICKET_CONTEXT_HEAD) &&
                   m.content.length > 1400 ? (
-                    <details className="mt-1 rounded border border-slate-700/60 bg-slate-950/40 p-2">
-                      <summary className="cursor-pointer select-none text-xs text-slate-400">
-                        Полный контекст тикета ({m.content.length.toLocaleString("ru-RU")} симв.) — развернуть
-                      </summary>
-                      <pre className="mt-2 max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm text-slate-200">
-                        {m.content}
-                      </pre>
-                    </details>
+                    <>
+                      <details className="mt-1 rounded border border-slate-700/60 bg-slate-950/40 p-2">
+                        <summary className="cursor-pointer select-none text-xs text-slate-400">
+                          Полный контекст тикета ({m.content.length.toLocaleString("ru-RU")} симв.) — развернуть
+                        </summary>
+                        <pre className="mt-2 max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-sans text-sm text-slate-200">
+                          {m.content}
+                        </pre>
+                      </details>
+                      {parseChatAttachmentsJson(m.attachmentsJson).length > 0 ? (
+                        <div className="mt-2 rounded border border-slate-700/60 bg-slate-950/50 px-2 py-1.5 text-[11px] text-slate-400">
+                          <div className="font-medium text-slate-300">Вложения</div>
+                          <ul className="mt-1 list-inside list-disc space-y-0.5">
+                            {parseChatAttachmentsJson(m.attachmentsJson).map((a) => (
+                              <li key={a.relPath}>
+                                <span className="text-slate-200">{a.name}</span>
+                                <span className="font-mono text-slate-500"> · {a.relPath}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
-                    <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
-                      {m.role !== "user" && m.content.includes(WAITING_CODE)
-                        ? m.content.replace(WAITING_CODE, "").trim()
-                        : m.content}
-                    </pre>
+                    <>
+                      <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">
+                        {m.role !== "user" && m.content.includes(WAITING_CODE)
+                          ? m.content.replace(WAITING_CODE, "").trim()
+                          : m.content}
+                      </pre>
+                      {m.role === "user" && parseChatAttachmentsJson(m.attachmentsJson).length > 0 ? (
+                        <div className="mt-2 rounded border border-slate-700/60 bg-slate-950/50 px-2 py-1.5 text-[11px] text-slate-400">
+                          <div className="font-medium text-slate-300">Вложения</div>
+                          <ul className="mt-1 list-inside list-disc space-y-0.5">
+                            {parseChatAttachmentsJson(m.attachmentsJson).map((a) => (
+                              <li key={a.relPath}>
+                                <span className="text-slate-200">{a.name}</span>
+                                <span className="font-mono text-slate-500"> · {a.relPath}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </>
                   )}
                 </div>
               ))}
@@ -437,8 +483,40 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
         <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
           <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
             Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
-            <span className="font-mono text-slate-400">[обновить контекст]</span>.
+            <span className="font-mono text-slate-400">[обновить контекст]</span>. Файлы (до {CHAT_ATTACHMENT_MAX_FILES}{" "}
+            шт.) сохраняются в workspace — исполнитель читает их по указанным путям.
           </p>
+          <input
+            ref={attachInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const list = e.target.files ? Array.from(e.target.files) : [];
+              setPendingFiles((prev) => [...prev, ...list].slice(0, CHAT_ATTACHMENT_MAX_FILES));
+              e.target.value = "";
+            }}
+          />
+          {pendingFiles.length > 0 ? (
+            <div className="mb-1 flex max-h-14 flex-wrap gap-1 overflow-y-auto px-1 text-[10px]">
+              {pendingFiles.map((f, i) => (
+                <span
+                  key={`${f.name}-${i}`}
+                  className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-slate-300"
+                >
+                  {f.name}
+                  <button
+                    type="button"
+                    className="text-slate-500 hover:text-red-300"
+                    aria-label="Убрать файл"
+                    onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="flex gap-2">
             <textarea
               className="min-h-[2.75rem] max-h-32 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
@@ -454,14 +532,24 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
               }}
               disabled={loading || !sessionId}
             />
-            <button
-              type="button"
-              className="h-fit shrink-0 self-end rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              disabled={loading || !sessionId || !input.trim()}
-              onClick={() => void send()}
-            >
-              {loading ? "…" : "Отправить"}
-            </button>
+            <div className="flex shrink-0 flex-col items-end gap-1 self-end">
+              <button
+                type="button"
+                className="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                disabled={loading || !sessionId || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
+                onClick={() => attachInputRef.current?.click()}
+              >
+                Вложения
+              </button>
+              <button
+                type="button"
+                className="h-fit rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                disabled={loading || !sessionId || (!input.trim() && pendingFiles.length === 0)}
+                onClick={() => void send()}
+              >
+                {loading ? "…" : "Отправить"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
