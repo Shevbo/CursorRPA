@@ -2,16 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent } from "react";
 import { flushSync } from "react-dom";
 import type { BacklogItem, ChatMessage, ChatSession, Sprint } from "@prisma/client";
 import {
   CHAT_POST_MESSAGE_TYPE,
+  CHAT_SCROLL_TO_BOTTOM_TYPE,
   type ChatAgentPresence,
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
+import { collectClipboardFiles, mergePendingFiles } from "@/lib/chat-attachment-paste";
+import { ChatPaperclipAttach } from "@/components/ChatPaperclipAttach";
 import { AGENT_STATUS_EXT } from "@/generated/agent-status-ext";
 import { BACKLOG_ITEM_STATUSES, BACKLOG_SPRINT_STATUSES } from "@/lib/backlog-constants";
 import {
@@ -72,6 +76,7 @@ export function BacklogTicketView({
   const [chatInput, setChatInput] = useState("");
   const [pendingChatFiles, setPendingChatFiles] = useState<File[]>([]);
   const chatAttachInputRef = useRef<HTMLInputElement | null>(null);
+  const chatIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -117,6 +122,13 @@ export function BacklogTicketView({
     setItem((j as { item: ItemWithSprint }).item);
     setSession((j as { session: SessionWithMessages | null }).session ?? null);
   }, [itemId]);
+
+  const onTicketChatPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = collectClipboardFiles(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setPendingChatFiles((prev) => mergePendingFiles(prev, files));
+  }, []);
 
   useEffect(() => {
     if (inSprint) return;
@@ -626,6 +638,14 @@ export function BacklogTicketView({
       };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setPendingChatFiles([]);
+      try {
+        chatIframeRef.current?.contentWindow?.postMessage(
+          { type: CHAT_SCROLL_TO_BOTTOM_TYPE },
+          window.location.origin
+        );
+      } catch {
+        /* ignore */
+      }
       const uid = j.userMsg?.id;
       if (uid) {
         const t = (j.timeoutMs ?? 1_800_000) + 120_000;
@@ -1046,7 +1066,12 @@ export function BacklogTicketView({
           <div className="sr-only" role="status" aria-live="polite">
             {agentPresenceTitle}
           </div>
-          <iframe className="h-full w-full touch-manipulation border-0" src={chatIframeSrc} title="Ticket chat" />
+          <iframe
+            ref={chatIframeRef}
+            className="h-full w-full touch-manipulation border-0"
+            src={chatIframeSrc}
+            title="Ticket chat"
+          />
           <button
             type="button"
             className="pointer-events-auto absolute bottom-1.5 right-[17px] z-10 flex size-[22px] shrink-0 items-center justify-center rounded border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
@@ -1151,9 +1176,9 @@ export function BacklogTicketView({
             ) : null}
             <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
               Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
-              <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля. Вложения
-              (до {CHAT_ATTACHMENT_MAX_FILES} файлов) копируются в workspace проекта — агент читает их по путям из
-              служебной папки.
+              <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля. Скрепка и{" "}
+              <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {CHAT_ATTACHMENT_MAX_FILES} файлов)
+              в workspace для агента.
             </p>
             <input
               ref={chatAttachInputRef}
@@ -1187,19 +1212,29 @@ export function BacklogTicketView({
               </div>
             ) : null}
             <div className="flex min-h-0 flex-1 gap-2">
-              <textarea
-                className="min-h-0 min-w-0 flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
-                placeholder="Сообщение агенту…"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void sendToAgent();
+              <div className="relative min-h-0 min-w-0 flex-1">
+                <textarea
+                  className="min-h-0 w-full resize-none rounded border border-slate-700 bg-slate-900 py-2 pl-2 pr-10 pb-9 text-sm text-white disabled:opacity-60"
+                  placeholder="Сообщение агенту…"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onPaste={onTicketChatPaste}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendToAgent();
+                    }
+                  }}
+                  disabled={loadingChat || !session?.id}
+                />
+                <ChatPaperclipAttach
+                  className="absolute bottom-1 right-1 z-[1]"
+                  disabled={
+                    loadingChat || !session?.id || pendingChatFiles.length >= CHAT_ATTACHMENT_MAX_FILES
                   }
-                }}
-                disabled={loadingChat || !session?.id}
-              />
+                  onPickFiles={() => chatAttachInputRef.current?.click()}
+                />
+              </div>
               <div className="flex shrink-0 flex-col items-end justify-end gap-1.5">
                 <div className="leading-none" aria-hidden>
                   <img
@@ -1214,26 +1249,16 @@ export function BacklogTicketView({
                     loading="eager"
                   />
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <button
-                    type="button"
-                    className="shrink-0 rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-                    disabled={loadingChat || !session?.id || pendingChatFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
-                    onClick={() => chatAttachInputRef.current?.click()}
-                  >
-                    Вложения
-                  </button>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                    disabled={
-                      loadingChat || !session?.id || (!chatInput.trim() && pendingChatFiles.length === 0)
-                    }
-                    onClick={() => void sendToAgent()}
-                  >
-                    {loadingChat ? "…" : "Отправить"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  disabled={
+                    loadingChat || !session?.id || (!chatInput.trim() && pendingChatFiles.length === 0)
+                  }
+                  onClick={() => void sendToAgent()}
+                >
+                  {loadingChat ? "…" : "Отправить"}
+                </button>
               </div>
             </div>
           </div>

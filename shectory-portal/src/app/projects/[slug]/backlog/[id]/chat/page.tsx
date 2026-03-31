@@ -1,17 +1,21 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent } from "react";
 import { CHAT_ATTACHMENT_MAX_FILES, parseChatAttachmentsJson } from "@/lib/chat-attachments";
 import { useSearchParams } from "next/navigation";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import {
   CHAT_POST_MESSAGE_TYPE,
+  CHAT_SCROLL_TO_BOTTOM_TYPE,
   type ChatAgentPresence,
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
+import { collectClipboardFiles, mergePendingFiles } from "@/lib/chat-attachment-paste";
+import { ChatPaperclipAttach } from "@/components/ChatPaperclipAttach";
 import {
   TICKET_CONTEXT_HEAD,
   buildFollowUpTicketUserPayload,
@@ -71,17 +75,6 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const historyExpandedRef = useRef(false);
 
   const ticketLabel = ticket?.ticketKey?.trim() || params.id.slice(0, 8);
-
-  /** Только внутри listRef — не вызывать scrollIntoView (на iOS прокручивает родителя/iframe и сбивает позицию). */
-  const scrollListToBottomIfPinned = useCallback((behavior: ScrollBehavior = "auto") => {
-    const el = listRef.current;
-    if (!el || !stickBottomRef.current) return;
-    requestAnimationFrame(() => {
-      const node = listRef.current;
-      if (!node || !stickBottomRef.current) return;
-      node.scrollTo({ top: node.scrollHeight, behavior });
-    });
-  }, []);
 
   const messagesScrollKey = useMemo(() => {
     const m = session?.messages;
@@ -254,9 +247,45 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     [me, agentSpec]
   );
 
+  /** Прокрутка сразу после обновления DOM; если последнее — user, всегда к низу (отправка своего сообщения). */
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const msgs = session?.messages;
+    if (!msgs?.length) return;
+    const last = msgs[msgs.length - 1];
+    if (last.role === "user") stickBottomRef.current = true;
+    if (!stickBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messagesScrollKey, session?.messages]);
+
   useEffect(() => {
-    scrollListToBottomIfPinned("auto");
-  }, [messagesScrollKey, scrollListToBottomIfPinned]);
+    if (!embedThread) return;
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const d = ev.data as { type?: string } | null;
+      if (d?.type !== CHAT_SCROLL_TO_BOTTOM_TYPE) return;
+      stickBottomRef.current = true;
+      requestAnimationFrame(() => {
+        const node = listRef.current;
+        if (!node) return;
+        node.scrollTop = node.scrollHeight;
+        requestAnimationFrame(() => {
+          const n2 = listRef.current;
+          if (n2) n2.scrollTop = n2.scrollHeight;
+        });
+      });
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [embedThread]);
+
+  const onFramePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = collectClipboardFiles(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    setPendingFiles((prev) => mergePendingFiles(prev, files));
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -366,7 +395,6 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
         await waitForAssistantAfterUserMessage(sessionId, uid, { timeoutMs: t });
       }
       await load();
-      scrollListToBottomIfPinned("auto");
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -482,9 +510,10 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       {!embedThread ? (
         <div className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
           <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
-            Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля тикета, добавьте в сообщение{" "}
-            <span className="font-mono text-slate-400">[обновить контекст]</span>. Файлы (до {CHAT_ATTACHMENT_MAX_FILES}{" "}
-            шт.) сохраняются в workspace — исполнитель читает их по указанным путям.
+            Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля
+            тикета, добавьте <span className="font-mono text-slate-400">[обновить контекст]</span>. Скрепка и{" "}
+            <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {CHAT_ATTACHMENT_MAX_FILES} шт.) в
+            workspace.
           </p>
           <input
             ref={attachInputRef}
@@ -518,32 +547,32 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             </div>
           ) : null}
           <div className="flex gap-2">
-            <textarea
-              className="min-h-[2.75rem] max-h-32 flex-1 resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
-              placeholder="Сообщение агенту…"
-              rows={2}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              disabled={loading || !sessionId}
-            />
-            <div className="flex shrink-0 flex-col items-end gap-1 self-end">
-              <button
-                type="button"
-                className="rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+            <div className="relative min-h-[2.75rem] min-w-0 flex-1 max-h-32">
+              <textarea
+                className="min-h-[2.75rem] max-h-32 w-full resize-y rounded border border-slate-700 bg-slate-900 py-2 pl-3 pr-10 pb-9 text-sm text-white disabled:opacity-60"
+                placeholder="Сообщение агенту…"
+                rows={2}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPaste={onFramePaste}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                disabled={loading || !sessionId}
+              />
+              <ChatPaperclipAttach
+                className="absolute bottom-1 right-1.5 z-[1]"
                 disabled={loading || !sessionId || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
-                onClick={() => attachInputRef.current?.click()}
-              >
-                Вложения
-              </button>
+                onPickFiles={() => attachInputRef.current?.click()}
+              />
+            </div>
+            <div className="flex shrink-0 flex-col items-end justify-end self-stretch">
               <button
                 type="button"
-                className="h-fit rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="mt-auto rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 disabled={loading || !sessionId || (!input.trim() && pendingFiles.length === 0)}
                 onClick={() => void send()}
               >

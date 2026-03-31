@@ -32,6 +32,9 @@ export type ChatAgentPresence = "thinking" | "auditing" | "idle" | "error";
 
 export const CHAT_POST_MESSAGE_TYPE = "shectory-ticket-chat" as const;
 
+/** Родитель (BacklogTicketView) → iframe чата: прокрутить к низу после отправки сообщения. */
+export const CHAT_SCROLL_TO_BOTTOM_TYPE = "shectory-ticket-chat-scroll-bottom" as const;
+
 export type TicketChatPostMessage = {
   type: typeof CHAT_POST_MESSAGE_TYPE;
   chatAgentPresence: ChatAgentPresence;
