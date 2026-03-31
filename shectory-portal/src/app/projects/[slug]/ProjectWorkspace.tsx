@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, ChatSession } from "@prisma/client";
 import { BacklogPanel } from "@/components/BacklogPanel";
 import { fetchChatSession, waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
+import { formatMsgTime } from "@/lib/format-utils";
 
 type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
 type TestCase = { id: string; title: string; status: string; kind: string; scope: string; module?: { name: string } | null };
@@ -31,6 +32,10 @@ type WelcomeStatus = {
   missing?: string[];
   user?: { email?: string; role?: string } | null;
 };
+
+type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
+const EXECUTOR_PREFIX = "Агент-исполнитель (R) Shectory";
+const AUDITOR_PREFIX = "Агент-аудитор (R) Shectory";
 
 export function ProjectWorkspace({
   projectSlug,
@@ -61,6 +66,7 @@ export function ProjectWorkspace({
   const [botAllowedIds, setBotAllowedIds] = useState("");
   const [cmdInput, setCmdInput] = useState("");
   const [cmdRunning, setCmdRunning] = useState(false);
+  const [agentSpec, setAgentSpec] = useState<{ executor: string; auditor: string } | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [welcomeLoading, setWelcomeLoading] = useState(false);
   const [welcomeErr, setWelcomeErr] = useState("");
@@ -74,6 +80,38 @@ export function ProjectWorkspace({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [active?.messages, activeId, loading, tab]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/system/agent-spec", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: AgentSpecPayload) => {
+        if (!alive) return;
+        if (j?.ok && (j.executor || j.auditor)) {
+          setAgentSpec({ executor: String(j.executor || ""), auditor: String(j.auditor || "") });
+        }
+      })
+      .catch(() => {
+        if (!alive) return;
+        setAgentSpec(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const roleLabel = useCallback(
+    (m: ChatMessage) => {
+      if (m.role === "user") return "Пользователь";
+      if ((m.content ?? "").trimStart().startsWith("🕵️")) {
+        const spec = agentSpec?.auditor?.trim();
+        return spec ? `${AUDITOR_PREFIX} (${spec})` : `${AUDITOR_PREFIX} (спецификация модели ИИ)`;
+      }
+      const spec = agentSpec?.executor?.trim();
+      return spec ? `${EXECUTOR_PREFIX} (${spec})` : `${EXECUTOR_PREFIX} (спецификация модели ИИ)`;
+    },
+    [agentSpec]
+  );
 
   const proposedCmds = useMemo(() => {
     const lastAssistant = [...(active?.messages ?? [])].reverse().find((m) => m.role === "assistant");
@@ -329,7 +367,11 @@ export function ProjectWorkspace({
                       m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"
                     }
                   >
-                    <div className="text-xs text-slate-500">{m.role}</div>
+                    <div className="text-xs text-slate-500">
+                      <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
+                      <span className="mx-1.5">·</span>
+                      <span>{roleLabel(m)}</span>
+                    </div>
                     <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">{m.content}</pre>
                   </div>
                 ))}

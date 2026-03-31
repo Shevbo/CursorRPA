@@ -24,10 +24,11 @@ type Msg = { id: string; role: string; content: string; createdAt: string };
 type Session = { id: string; title?: string; messages: Msg[] };
 type Ticket = { id: string; ticketKey?: string | null; title: string; description?: string | null; descriptionPrompt?: string };
 type MePayload = { ok: boolean; user: { email: string; role: string; fullName?: string } | null };
+type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
 
 const PAGE_LIMIT = 80;
-const EXECUTOR_LABEL = "Агент-исполнитель (R) Shectory (спецификация модели ИИ)";
-const AUDITOR_LABEL = "Агент-аудитор (R) Shectory (спецификация модели ИИ)";
+const EXECUTOR_PREFIX = "Агент-исполнитель (R) Shectory";
+const AUDITOR_PREFIX = "Агент-аудитор (R) Shectory";
 
 function messagesListEqual(a: Msg[], b: Msg[]): boolean {
   if (a.length !== b.length) return false;
@@ -55,6 +56,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [me, setMe] = useState<MePayload["user"] | null>(null);
+  const [agentSpec, setAgentSpec] = useState<{ executor: string; auditor: string } | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -211,6 +213,25 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/system/agent-spec", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: AgentSpecPayload) => {
+        if (!alive) return;
+        if (j?.ok && (j.executor || j.auditor)) {
+          setAgentSpec({ executor: String(j.executor || ""), auditor: String(j.auditor || "") });
+        }
+      })
+      .catch(() => {
+        if (!alive) return;
+        setAgentSpec(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const roleLabel = useCallback(
     (m: Msg): string => {
       if (m.role === "user") {
@@ -218,10 +239,14 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
         const who = me?.fullName?.trim() ? `${me.fullName.trim()} (${me.email})` : me?.email || "—";
         return `${base}: ${who}`;
       }
-      if ((m.content ?? "").trimStart().startsWith("🕵️")) return AUDITOR_LABEL;
-      return EXECUTOR_LABEL;
+      if ((m.content ?? "").trimStart().startsWith("🕵️")) {
+        const spec = agentSpec?.auditor?.trim();
+        return spec ? `${AUDITOR_PREFIX} (${spec})` : `${AUDITOR_PREFIX} (спецификация модели ИИ)`;
+      }
+      const spec = agentSpec?.executor?.trim();
+      return spec ? `${EXECUTOR_PREFIX} (${spec})` : `${EXECUTOR_PREFIX} (спецификация модели ИИ)`;
     },
-    [me]
+    [me, agentSpec]
   );
 
   useEffect(() => {

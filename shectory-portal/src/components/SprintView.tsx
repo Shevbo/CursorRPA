@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChatMessage, ChatSession, Sprint } from "@prisma/client";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
+import { formatMsgTime } from "@/lib/format-utils";
 
 type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
+type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
+
+const EXECUTOR_PREFIX = "Агент-исполнитель (R) Shectory";
+const AUDITOR_PREFIX = "Агент-аудитор (R) Shectory";
 
 type BacklogRow = {
   id: string;
@@ -36,6 +41,7 @@ export function SprintView({
   const [items, setItems] = useState<BacklogRow[]>([]);
   const [sprint, setSprint] = useState<Sprint | null>(initialSprint as Sprint | null);
   const [session, setSession] = useState<SessionWithMessages | null>(null);
+  const [agentSpec, setAgentSpec] = useState<{ executor: string; auditor: string } | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -77,6 +83,38 @@ export function SprintView({
     void load();
     void loadSprint();
   }, [load, loadSprint]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/system/agent-spec", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: AgentSpecPayload) => {
+        if (!alive) return;
+        if (j?.ok && (j.executor || j.auditor)) {
+          setAgentSpec({ executor: String(j.executor || ""), auditor: String(j.auditor || "") });
+        }
+      })
+      .catch(() => {
+        if (!alive) return;
+        setAgentSpec(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const roleLabel = useCallback(
+    (m: ChatMessage) => {
+      if (m.role === "user") return "Пользователь";
+      if ((m.content ?? "").trimStart().startsWith("🕵️")) {
+        const spec = agentSpec?.auditor?.trim();
+        return spec ? `${AUDITOR_PREFIX} (${spec})` : `${AUDITOR_PREFIX} (спецификация модели ИИ)`;
+      }
+      const spec = agentSpec?.executor?.trim();
+      return spec ? `${EXECUTOR_PREFIX} (${spec})` : `${EXECUTOR_PREFIX} (спецификация модели ИИ)`;
+    },
+    [agentSpec]
+  );
 
   const loadSession = useCallback(async (sessionId: string) => {
     const r = await fetch(
@@ -233,7 +271,11 @@ export function SprintView({
                   key={m.id}
                   className={m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"}
                 >
-                  <div className="text-xs text-slate-500">{m.role}</div>
+                  <div className="text-xs text-slate-500">
+                    <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
+                    <span className="mx-1.5">·</span>
+                    <span>{roleLabel(m)}</span>
+                  </div>
                   <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-200">{m.content}</pre>
                 </div>
               ))}
