@@ -8,6 +8,7 @@ import {
   type ChatAgentPresence,
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
+  looksLikeOutputFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
@@ -18,6 +19,7 @@ import {
   stripTicketContextRefreshTag,
   userRequestedTicketContextRefresh,
 } from "@/lib/ticket-chat-context";
+import { formatMsgTime } from "@/lib/format-utils";
 
 type Msg = { id: string; role: string; content: string; createdAt: string };
 type Session = { id: string; title?: string; messages: Msg[] };
@@ -39,14 +41,6 @@ function mergeOlderPrefixWithLatestTail(prev: Msg[], tail: Msg[]): Msg[] {
   const t0 = new Date(tail[0].createdAt).getTime();
   const prefix = prev.filter((m) => new Date(m.createdAt).getTime() < t0);
   return [...prefix, ...tail];
-}
-
-function formatMsgTime(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
 }
 
 function TicketChatFramePageInner({ params }: { params: { slug: string; id: string } }) {
@@ -97,6 +91,8 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
+    if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
+    if (looksLikeOutputFailure(last.content ?? "", "")) return "error";
     return "idle";
   }, [loading, err, session?.messages]);
 
@@ -349,15 +345,9 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                   className={m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"}
                 >
                   <div className="text-xs text-slate-500">
-                    {m.role === "user" ? (
-                      <>
-                        <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
-                        <span className="mx-1.5">·</span>
-                        <span>user</span>
-                      </>
-                    ) : (
-                      m.role
-                    )}
+                    <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
+                    <span className="mx-1.5">·</span>
+                    <span>{m.role}</span>
                   </div>
                   {m.role === "user" &&
                   m.content.startsWith(TICKET_CONTEXT_HEAD) &&

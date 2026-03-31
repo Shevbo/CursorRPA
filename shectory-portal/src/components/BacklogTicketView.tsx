@@ -10,6 +10,7 @@ import {
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
+  looksLikeOutputFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
 import { AGENT_STATUS_EXT } from "@/generated/agent-status-ext";
@@ -40,6 +41,7 @@ const ticketAgentStatusSrc = (name: keyof typeof AGENT_STATUS_EXT) =>
 
 const TICKET_AGENT_STATUS_SRC: Record<ChatAgentPresence, string> = {
   thinking: ticketAgentStatusSrc("Thinking3"),
+  auditing: ticketAgentStatusSrc("Auditing3"),
   idle: ticketAgentStatusSrc("Noduty3"),
   error: ticketAgentStatusSrc("Error3"),
 };
@@ -187,7 +189,8 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
-  const lastCommandFailed = looksLikeCommandFailure(lastAssistantContent ?? "");
+  const lastCommandFailed =
+    looksLikeCommandFailure(lastAssistantContent ?? "") || looksLikeOutputFailure(lastAssistantContent ?? "", "");
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
@@ -208,6 +211,7 @@ export function BacklogTicketView({
     if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
+    if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
     return "idle";
   }, [session?.messages]);
 
@@ -230,6 +234,8 @@ export function BacklogTicketView({
     switch (agentPresence) {
       case "thinking":
         return "Думаю — агент обрабатывает сообщение; дождитесь ответа в ленте выше.";
+      case "auditing":
+        return "Аудитор проверяет вывод и при необходимости отправляет исполнителю уточнённый контекст.";
       case "error":
         return "Похоже на сбой ответа или процесса. Обычно нового вывода без ваших действий не будет — проверьте текст и при необходимости перезапустите агента.";
       default:

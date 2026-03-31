@@ -25,6 +25,7 @@ const AGENT_STATUS_EXT = {
   Thinking3: resolveExt("Thinking3"),
   Noduty3: resolveExt("Noduty3"),
   Error3: resolveExt("Error3"),
+  Auditing3: resolveExt("Auditing3"),
 };
 
 fs.mkdirSync(path.dirname(outFile), { recursive: true });

@@ -2,5 +2,6 @@
 export const AGENT_STATUS_EXT = {
   "Thinking3": "gif",
   "Noduty3": "gif",
-  "Error3": "gif"
+  "Error3": "gif",
+  "Auditing3": "gif"
 } as const;
