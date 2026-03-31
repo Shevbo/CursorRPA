@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { adminAuthOk } from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
-import { looksLikeOutputFailure } from "@/lib/agent-chat-presence";
 import { getAgentPromptTimeoutMs } from "@/lib/agent-timeout";
 
 type Ctx = { params: { id: string } };
@@ -85,57 +84,30 @@ export async function POST(req: Request, { params }: Ctx) {
     },
   });
 
-  // Auditor: even when exit_code is 0, scan output for obvious failures.
-  const outputFailed = looksLikeOutputFailure(result.stdout, result.stderr);
-  const exitFailed = typeof result.code === "number" ? result.code !== 0 : result.code !== 0;
-  if (exitFailed || outputFailed) {
-    const why = exitFailed
-      ? `exit_code=${String(result.code)}`
-      : "вывод содержит явную ошибку при exit_code=0";
-    await prisma.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: "assistant",
-        content:
-          `🕵️ Аудитор: обнаружена ошибка выполнения (${why}). ` +
-          `Отправляю исполнителю контекст на исправление и добиваюсь успешного шага (exit_code: 0 без ошибок в выводе).`,
-      },
-    });
+  // LLM Auditor: always evaluate full output with an independent prompt.
+  await prisma.chatMessage.create({
+    data: {
+      sessionId: session.id,
+      role: "assistant",
+      content: "🕵️ Аудитор: проверяю успешность шага по полному выводу…",
+    },
+  });
 
-    const auditPrompt =
-      [
-        "Аудитор: предыдущая команда дала ошибку.",
-        "Требование: продолжай исправлять до успеха (exit_code: 0 и нет явных ошибок в выводе).",
-        "",
-        "КОМАНДА:",
-        command,
-        "",
-        `exit_code: ${String(result.code)}`,
-        "",
-        result.stdout ? `stdout:\n${clip(result.stdout, 12000)}` : "",
-        result.stderr ? `stderr:\n${clip(result.stderr, 12000)}` : "",
-        "",
-        "Сформулируй следующий корректирующий шаг и выведи следующую команду через <<<SHELL_COMMAND>>>...<<</SHELL_COMMAND>>> + [***waiting for answer***].",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-    const userMsg = await prisma.chatMessage.create({
-      data: { sessionId: session.id, role: "user", content: auditPrompt },
-    });
-
-    const runnerPath = path.join(process.cwd(), "scripts", "agent-chat-runner.mjs");
-    const promptB64 = Buffer.from(auditPrompt, "utf8").toString("base64");
-    const child = spawn(
-      process.execPath,
-      [runnerPath, session.id, session.project.workspacePath, promptB64, String(getAgentPromptTimeoutMs())],
-      { detached: true, stdio: "ignore" }
-    );
-    child.unref();
-    await prisma.chatSession.update({ where: { id: session.id }, data: { updatedAt: new Date() } });
-    // include userMsg in response for debugging if needed
-    void userMsg;
-  }
+  const auditorPath = path.join(process.cwd(), "scripts", "agent-auditor-runner.mjs");
+  const auditPayload = {
+    sessionId: session.id,
+    command,
+    exitCode: result.code,
+    stdout: clip(result.stdout, 12000),
+    stderr: clip(result.stderr, 12000),
+  };
+  const auditB64 = Buffer.from(JSON.stringify(auditPayload), "utf8").toString("base64");
+  const auditChild = spawn(
+    process.execPath,
+    [auditorPath, session.id, session.project.workspacePath, auditB64, String(getAgentPromptTimeoutMs())],
+    { detached: true, stdio: "ignore" }
+  );
+  auditChild.unref();
 
   await prisma.chatSession.update({ where: { id: session.id }, data: { updatedAt: new Date() } });
 

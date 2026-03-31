@@ -8,7 +8,6 @@ import {
   type ChatAgentPresence,
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
-  looksLikeOutputFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
@@ -92,7 +91,6 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
-    if (looksLikeOutputFailure(last.content ?? "", "")) return "error";
     return "idle";
   }, [loading, err, session?.messages]);
 

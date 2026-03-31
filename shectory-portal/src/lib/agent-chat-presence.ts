@@ -28,32 +28,6 @@ export function looksLikeCommandFailure(content: string): boolean {
   return Number.isFinite(code) && code !== 0;
 }
 
-/**
- * Эвристика: даже при exit_code=0 считаем ошибкой, если в выводе явная ошибка.
- * Нужна из-за кейсов, когда команда с pipe/tee теряет код возврата или пишет ошибку в stdout.
- */
-export function looksLikeOutputFailure(stdout: string, stderr: string): boolean {
-  const out = `${stdout || ""}\n${stderr || ""}`.trim();
-  if (!out) return false;
-  const low = out.toLowerCase();
-  // Strong indicators
-  if (/\bbuild error occurred\b/i.test(out)) return true;
-  if (/\bfailed to compile\b/i.test(out)) return true;
-  if (/\bbuild failed because of\b/i.test(out)) return true;
-  if (/\bfailed to load\b/i.test(out)) return true;
-  if (/\bcannot find module\b/i.test(out)) return true;
-  if (/\bmodule not found\b/i.test(out)) return true;
-  if (/\bcan['’]?t resolve\b/i.test(out)) return true;
-  if (/\bmodule_not_found\b/i.test(out)) return true;
-  if (/\bunknown or unexpected option\b/i.test(out)) return true;
-  if (/\b(error|exception):/i.test(out)) return true;
-  // npm/yarn/pnpm hard failures
-  if (/\bnpm\b.*\berr!\b/i.test(out)) return true;
-  if (/\bpnpm\b.*\berr!\b/i.test(out)) return true;
-  if (low.includes("http: 000")) return true;
-  return false;
-}
-
 export type ChatAgentPresence = "thinking" | "auditing" | "idle" | "error";
 
 export const CHAT_POST_MESSAGE_TYPE = "shectory-ticket-chat" as const;

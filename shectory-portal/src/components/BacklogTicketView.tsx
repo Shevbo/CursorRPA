@@ -10,7 +10,6 @@ import {
   looksLikeAssistantBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
-  looksLikeOutputFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
 import { AGENT_STATUS_EXT } from "@/generated/agent-status-ext";
@@ -189,8 +188,7 @@ export function BacklogTicketView({
     /\?\s*$/.test(lastAssistantContent.trim()) ||
     /\b(уточните|уточнение|ответьте|ответ|подтвердите|выберите|нужно уточнить|как лучше|какой вариант|предпочитаете)\b/i.test(lastAssistantContent);
   const agentWaiting = waitingByCodeWord || waitingByHeuristic;
-  const lastCommandFailed =
-    looksLikeCommandFailure(lastAssistantContent ?? "") || looksLikeOutputFailure(lastAssistantContent ?? "", "");
+  const lastCommandFailed = looksLikeCommandFailure(lastAssistantContent ?? "");
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
