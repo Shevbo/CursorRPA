@@ -998,11 +998,9 @@ export function BacklogTicketView({
     </div>
   );
 
-  const layoutExpanded = ticketDetailsOpen || ticketManagementOpen;
-
   const chatMiddleSection =
     !inSprint && session?.id ? (
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-x border-slate-800 bg-black/20">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-x border-slate-800 bg-black/20">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 px-2 py-1.5">
           <span className="text-sm font-medium text-white">Чат с агентом</span>
           {agentWaiting ? (
@@ -1032,7 +1030,7 @@ export function BacklogTicketView({
           </label>
         </div>
         {run ? (
-          <div className="max-h-[28%] shrink-0 overflow-y-auto border-b border-slate-800 px-2 py-2">
+          <div className="max-h-[min(200px,30svh)] shrink-0 overflow-y-auto border-b border-slate-800 px-2 py-2">
             <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400">
               <span>Чеклист</span>
               <span className="font-mono text-slate-300">
@@ -1108,14 +1106,10 @@ export function BacklogTicketView({
 
   const chatBottomSection =
     !inSprint && session?.id ? (
-      <section
-        className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-slate-800 bg-slate-950/98 ${
-          layoutExpanded ? "min-h-[10.5rem] shrink-0" : "h-[20%] min-h-[7.5rem] shrink-0"
-        }`}
-      >
-        <div className="min-h-0 min-w-0 flex flex-1 flex-col">
+      <section className="flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-t border-slate-800 bg-slate-950/98">
+        <div className="flex min-h-0 min-w-0 flex-col">
           {(approvalCmds.length > 0 || run?.status === "waiting_user") && (
-            <div className="max-h-[38%] shrink-0 overflow-y-auto border-b border-slate-800/80 px-2 py-1.5">
+            <div className="max-h-[min(280px,42svh)] shrink-0 overflow-y-auto border-b border-slate-800/80 px-2 py-1.5 overscroll-contain">
               <div className="rounded border border-amber-900/60 bg-amber-900/10 p-2">
                 <div className="text-[11px] font-medium text-amber-200">Подтверждение команды</div>
                 {approvalCmds.length > 0 && (
@@ -1168,7 +1162,7 @@ export function BacklogTicketView({
               </div>
             </div>
           )}
-          <div className="flex min-h-0 flex-1 flex-col px-2 py-1.5">
+          <div className="flex min-h-0 flex-col px-2 py-1.5">
             {lastCommandFailed ? (
               <div className="mb-2 shrink-0 rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-[11px] text-red-200">
                 Последняя команда завершилась ошибкой (exit_code ≠ 0). Агент должен продолжать исправлять до успеха.
@@ -1265,23 +1259,13 @@ export function BacklogTicketView({
         </div>
       </section>
     ) : (
-      <section
-        className={`border-t border-slate-800 bg-slate-950/90 ${layoutExpanded ? "min-h-[4rem] shrink-0" : "h-[20%] min-h-[4rem] shrink-0"}`}
-      />
+      <section className="min-h-[4rem] shrink-0 border-t border-slate-800 bg-slate-950/90" />
     );
 
   return (
-    <div className="max-w-full min-h-0 w-full [-webkit-tap-highlight-color:transparent]">
-      <div
-        className={`flex w-full min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/30 ${
-          layoutExpanded ? "min-h-[calc(100dvh-5.5rem)]" : "h-[calc(100dvh-5.5rem)]"
-        }`}
-      >
-        <section
-          className={`shrink-0 overflow-y-auto overflow-x-hidden border-b border-slate-800 ${
-            layoutExpanded ? "" : "max-h-[30%]"
-          }`}
-        >
+    <div className="h-full max-w-full min-h-0 w-full [-webkit-tap-highlight-color:transparent]">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/30">
+        <section className="max-h-[min(46vh,560px)] shrink-0 overflow-y-auto overflow-x-hidden border-b border-slate-800 overscroll-contain">
           {ticketTopSection}
         </section>
         {chatMiddleSection}
