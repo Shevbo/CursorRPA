@@ -5,6 +5,11 @@ import { getAgentPromptTimeoutMs } from "@/lib/agent-timeout";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
+function redactSecrets(text: string): string {
+  // Minimal redaction to avoid storing obvious passwords in chat history.
+  return text.replace(/(sshpass\s+-p\s+)(\"[^\"]*\"|'[^']*'|\S+)/gi, "$1'***'");
+}
+
 export async function POST(req: Request) {
   if (!adminAuthOk(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,15 +35,21 @@ export async function POST(req: Request) {
   });
   if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
+  if (session.isStopped) {
+    return NextResponse.json({ error: "Session is stopped" }, { status: 409 });
+  }
+
+  const cleanMessage = redactSecrets(message.trim());
   const userMsg = await prisma.chatMessage.create({
-    data: { sessionId, role: "user", content: message.trim() },
+    data: { sessionId, role: "user", content: cleanMessage },
   });
 
   const runnerPath = path.join(process.cwd(), "scripts", "agent-chat-runner.mjs");
-  const promptB64 = Buffer.from(message.trim(), "utf8").toString("base64");
+  // Pass message id instead of full text: avoids argv length/E2BIG and encoding issues.
+  const payload = `msg:${userMsg.id}`;
   const child = spawn(
     process.execPath,
-    [runnerPath, sessionId, project.workspacePath, promptB64, String(getAgentPromptTimeoutMs())],
+    [runnerPath, sessionId, project.workspacePath, payload, String(getAgentPromptTimeoutMs())],
     { detached: true, stdio: "ignore" }
   );
   child.unref();

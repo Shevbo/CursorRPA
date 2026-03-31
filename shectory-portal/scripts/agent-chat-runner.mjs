@@ -44,15 +44,25 @@ function windowMessagesForAgent(msgs) {
 }
 
 async function main() {
-  const [sessionId, workspacePath, promptB64, timeoutStr] = process.argv.slice(2);
-  if (!sessionId || !workspacePath || !promptB64) {
-    throw new Error("Usage: agent-chat-runner.mjs <sessionId> <workspacePath> <promptB64> [timeoutMs]");
+  const [sessionId, workspacePath, payloadArg, timeoutStr] = process.argv.slice(2);
+  if (!sessionId || !workspacePath || !payloadArg) {
+    throw new Error("Usage: agent-chat-runner.mjs <sessionId> <workspacePath> <payload> [timeoutMs]");
   }
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
-  const prompt = Buffer.from(promptB64, "base64").toString("utf8");
 
   const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
   if (sess?.isStopped) return;
+
+  let prompt = "";
+  const payload = String(payloadArg || "").trim();
+  if (payload.startsWith("msg:")) {
+    const msgId = payload.slice("msg:".length).trim();
+    const m = await prisma.chatMessage.findUnique({ where: { id: msgId }, select: { role: true, content: true } });
+    if (m?.role === "user") prompt = String(m.content || "");
+  } else {
+    // Backward compatibility: base64 prompt in argv.
+    prompt = Buffer.from(payload, "base64").toString("utf8");
+  }
 
   await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
