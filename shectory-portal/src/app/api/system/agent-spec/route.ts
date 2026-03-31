@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { currentPortalSessionFromRequest } from "@/lib/portal-auth";
 
 function defaultSpec(): { executor: string; auditor: string } {
-  const agentBin = (process.env.AGENT_BIN || "~/.local/bin/agent").trim();
-  const args = ["-p", "--trust", "--output-format text", "--workspace <path>"].join(" ");
-  const base = `Cursor agent CLI (${agentBin}) args: ${args}`;
-  return { executor: base, auditor: base };
+  // Defaults for Shectory UI (no secrets). Can be overridden by env vars below.
+  return { executor: "Claude 4.6", auditor: "Gemini 3.1 Pro" };
 }
 
 export async function GET(req: Request) {
