@@ -547,9 +547,9 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             </div>
           ) : null}
           <div className="flex gap-2">
-            <div className="relative min-h-[2.75rem] min-w-0 flex-1 max-h-32">
+            <div className="relative min-h-[2.75rem] min-w-0 max-h-32 flex-1">
               <textarea
-                className="min-h-[2.75rem] max-h-32 w-full resize-y rounded border border-slate-700 bg-slate-900 py-2 pl-3 pr-10 pb-9 text-sm text-white disabled:opacity-60"
+                className="min-h-[2.75rem] max-h-32 w-full resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
                 placeholder="Сообщение агенту…"
                 rows={2}
                 value={input}
@@ -564,7 +564,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                 disabled={loading || !sessionId}
               />
               <ChatPaperclipAttach
-                className="absolute bottom-1 right-1.5 z-[1]"
+                className="pointer-events-auto absolute bottom-1.5 right-2 z-10"
                 disabled={loading || !sessionId || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
                 onPickFiles={() => attachInputRef.current?.click()}
               />

@@ -1212,9 +1212,9 @@ export function BacklogTicketView({
               </div>
             ) : null}
             <div className="flex min-h-0 flex-1 gap-2">
-              <div className="relative min-h-0 min-w-0 flex-1">
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <textarea
-                  className="min-h-0 w-full resize-none rounded border border-slate-700 bg-slate-900 py-2 pl-2 pr-10 pb-9 text-sm text-white disabled:opacity-60"
+                  className="min-h-0 min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
                   placeholder="Сообщение агенту…"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -1228,7 +1228,7 @@ export function BacklogTicketView({
                   disabled={loadingChat || !session?.id}
                 />
                 <ChatPaperclipAttach
-                  className="absolute bottom-1 right-1 z-[1]"
+                  className="pointer-events-auto absolute bottom-1 right-1 z-10"
                   disabled={
                     loadingChat || !session?.id || pendingChatFiles.length >= CHAT_ATTACHMENT_MAX_FILES
                   }
