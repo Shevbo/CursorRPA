@@ -5,6 +5,7 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 const WAITING_CODE = "[***waiting for answer***]";
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "claude-4.6-sonnet-medium").trim();
 
 function now() {
   return new Date();
@@ -190,7 +191,7 @@ async function main() {
       void emit(runId, "heartbeat", "Генерирую инженерный промпт…", { stepIndex: step.index });
     }, 15000);
 
-    const r = await runAgentPrompt(run.project.workspacePath, ctx + ruBlock(), phaseTimeoutMs);
+    const r = await runAgentPrompt(run.project.workspacePath, ctx + ruBlock(), phaseTimeoutMs, EXECUTOR_MODEL_ID);
     stopped = true;
     clearInterval(hb);
 
@@ -255,7 +256,7 @@ async function main() {
       });
     }, 15000);
 
-    const r = await runAgentPrompt(run.project.workspacePath, stepPrompt, phaseTimeoutMs);
+    const r = await runAgentPrompt(run.project.workspacePath, stepPrompt, phaseTimeoutMs, EXECUTOR_MODEL_ID);
     stopped = true;
     clearInterval(hb);
 

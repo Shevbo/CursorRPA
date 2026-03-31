@@ -69,12 +69,16 @@ function slimAgentEnv() {
  * @param {string} workspacePath
  * @param {string} prompt
  * @param {number} timeoutMs
+ * @param {string | undefined} modelId
  * @returns {Promise<{ ok: boolean; stdout: string; stderr: string }>}
  */
-export function runAgentPrompt(workspacePath, prompt, timeoutMs) {
+export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
   loadApiKey();
   const env = slimAgentEnv();
-  const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath, "-"];
+  const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath];
+  const m = String(modelId || "").trim();
+  if (m) args.push("--model", m);
+  args.push("-");
   return new Promise((resolve) => {
     const child = spawn(AGENT_BIN, args, { env, shell: false });
     let stdout = "";

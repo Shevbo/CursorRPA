@@ -4,6 +4,8 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "claude-4.6-sonnet-medium").trim();
+
 async function main() {
   const [sessionId, workspacePath, promptB64, timeoutStr] = process.argv.slice(2);
   if (!sessionId || !workspacePath || !promptB64) {
@@ -16,7 +18,12 @@ async function main() {
     data: { sessionId, role: "assistant", content: "⏳ Агент запущен. Думаю над задачей…" },
   });
 
-  const { ok, stdout, stderr } = await runAgentPrompt(workspacePath, shectoryWikiPreamble() + prompt, timeoutMs);
+  const { ok, stdout, stderr } = await runAgentPrompt(
+    workspacePath,
+    shectoryWikiPreamble() + prompt,
+    timeoutMs,
+    EXECUTOR_MODEL_ID
+  );
   const reply = (ok ? stdout : stderr || stdout).trim() || "(пустой ответ agent)";
 
   await prisma.chatMessage.create({

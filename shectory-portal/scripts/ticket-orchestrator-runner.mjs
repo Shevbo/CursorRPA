@@ -11,6 +11,8 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "claude-4.6-sonnet-medium").trim();
+
 const TOTAL_STEPS = 5;
 const WAITING_CODE = "[***waiting for answer***]";
 
@@ -92,7 +94,7 @@ async function runWithHeartbeats(sessionId, label, workspacePath, prompt, timeou
   }, tickMs);
 
   try {
-    return await runAgentPrompt(workspacePath, shectoryWikiPreamble() + prompt + RU_BLOCK, timeoutMs);
+    return await runAgentPrompt(workspacePath, shectoryWikiPreamble() + prompt + RU_BLOCK, timeoutMs, EXECUTOR_MODEL_ID);
   } finally {
     clearInterval(interval);
   }

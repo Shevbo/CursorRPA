@@ -4,6 +4,8 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "claude-4.6-sonnet-medium").trim();
+
 const RU_TAIL =
   "\n\n━━ Стандарты Shectory ━━\n" +
   "В начале этого запроса при наличии файла подставлен текст **Shectory Wikipedia** (docs/shectory-wikipedia.md в корне репозитория). Следуй ему при работе над продуктом; если пользователь пишет «читай википедию shectory» — явно опирайся на этот свод.\n" +
@@ -87,7 +89,8 @@ async function main() {
   const { ok, stdout, stderr } = await runAgentPrompt(
     workspacePath,
     shectoryWikiPreamble() + composed + RU_TAIL,
-    timeoutMs
+    timeoutMs,
+    EXECUTOR_MODEL_ID
   );
   const reply = (ok ? stdout : stderr || stdout).trim() || "(пустой ответ agent)";
 

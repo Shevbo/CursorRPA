@@ -4,6 +4,8 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
+const AUDITOR_MODEL_ID = (process.env.SHECTORY_AUDITOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
+
 function safeJsonParse(s) {
   try {
     return JSON.parse(s);
@@ -89,7 +91,12 @@ async function main() {
       payload.stderr ? `stderr:\n${clip(payload.stderr, 12000)}` : "stderr: (empty)",
     ].join("\n");
 
-  const { ok, stdout, stderr } = await runAgentPrompt(workspacePath, shectoryWikiPreamble() + auditorPrompt, timeoutMs);
+  const { ok, stdout, stderr } = await runAgentPrompt(
+    workspacePath,
+    shectoryWikiPreamble() + auditorPrompt,
+    timeoutMs,
+    AUDITOR_MODEL_ID
+  );
   const raw = (ok ? stdout : stderr || stdout).trim();
   const j = safeJsonParse(raw);
 
