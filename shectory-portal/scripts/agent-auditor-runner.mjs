@@ -55,6 +55,9 @@ async function main() {
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
   const payload = safeJsonParse(Buffer.from(auditB64, "base64").toString("utf8")) || {};
 
+  const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  if (sess?.isStopped) return;
+
   const tail = await prisma.chatMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },

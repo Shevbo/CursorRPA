@@ -141,7 +141,19 @@ export function SprintView({
     }
     const sid = (j as { session?: { id?: string } }).session?.id ?? "";
     if (!sid) return;
-    setSession({ id: sid, title: `${sprintTitle} (agent)`, projectId, createdAt: new Date(), updatedAt: new Date(), backlogItemId: null, messages: [] } as SessionWithMessages);
+    setSession(
+      {
+        id: sid,
+        title: `${sprintTitle} (agent)`,
+        projectId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        backlogItemId: null,
+        isStopped: false,
+        stoppedAt: null,
+        messages: [],
+      } as SessionWithMessages
+    );
     await loadSession(sid);
   }
 

@@ -22,6 +22,9 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
   if (!session.project?.workspacePath) return NextResponse.json({ error: "workspacePath missing" }, { status: 500 });
+  if (session.isStopped) {
+    return NextResponse.json({ error: "Session is stopped" }, { status: 409 });
+  }
 
   let body: { command?: unknown };
   try {
@@ -31,6 +34,20 @@ export async function POST(req: Request, { params }: Ctx) {
   }
   const command = typeof body.command === "string" ? body.command.trim() : "";
   if (!command) return NextResponse.json({ error: "command required" }, { status: 400 });
+  if (command === "..." || command === "…") {
+    await prisma.chatMessage.create({
+      data: {
+        sessionId: session.id,
+        role: "assistant",
+        content:
+          "### Команда отклонена\n\n" +
+          "Получена команда-заглушка `...`. Это приводит к зацикливанию. " +
+          "Сформулируйте конкретную команду (без многоточия) и подтвердите её.",
+      },
+    });
+    await prisma.chatSession.update({ where: { id: session.id }, data: { updatedAt: new Date() } });
+    return NextResponse.json({ error: "placeholder command rejected" }, { status: 400 });
+  }
 
   await prisma.chatMessage.create({
     data: {
@@ -83,6 +100,19 @@ export async function POST(req: Request, { params }: Ctx) {
         (result.stderr ? `stderr:\n${clip(result.stderr)}\n\n` : ""),
     },
   });
+
+  const fresh = await prisma.chatSession.findUnique({ where: { id: session.id }, select: { isStopped: true } });
+  if (fresh?.isStopped) {
+    await prisma.chatMessage.create({
+      data: {
+        sessionId: session.id,
+        role: "assistant",
+        content: "### Аудит пропущен\n\nСессия остановлена кнопкой «Остановить» — автозапуск аудитора заблокирован.",
+      },
+    });
+    await prisma.chatSession.update({ where: { id: session.id }, data: { updatedAt: new Date() } });
+    return NextResponse.json({ ok: true, command, code: result.code, stdout: clip(result.stdout), stderr: clip(result.stderr) });
+  }
 
   // LLM Auditor: always evaluate full output with an independent prompt.
   await prisma.chatMessage.create({

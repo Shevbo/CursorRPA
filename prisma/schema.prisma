@@ -102,6 +102,8 @@ model ChatSession {
   backlogItemId String?   @map("backlog_item_id")
   backlogItem   BacklogItem? @relation(fields: [backlogItemId], references: [id], onDelete: SetNull)
   title     String
+  isStopped Boolean       @default(false) @map("is_stopped")
+  stoppedAt DateTime?     @map("stopped_at")
   messages  ChatMessage[]
   agentRuns AgentRun[]
   createdAt DateTime      @default(now()) @map("created_at")

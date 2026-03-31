@@ -51,6 +51,9 @@ async function main() {
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
   const prompt = Buffer.from(promptB64, "base64").toString("utf8");
 
+  const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  if (sess?.isStopped) return;
+
   await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
   });

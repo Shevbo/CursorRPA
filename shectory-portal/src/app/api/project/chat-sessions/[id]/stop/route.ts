@@ -23,6 +23,11 @@ export async function POST(req: Request, { params }: Ctx) {
   const session = await prisma.chatSession.findUnique({ where: { id: params.id } });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  await prisma.chatSession.update({
+    where: { id: params.id },
+    data: { isStopped: true, stoppedAt: new Date(), updatedAt: new Date() },
+  });
+
   const pid = await readAgentPidFile(params.id);
   if (pid === null) {
     return NextResponse.json({ ok: true, stopped: false, message: "Нет активного процесса оркестратора для этой сессии." });
@@ -44,7 +49,8 @@ export async function POST(req: Request, { params }: Ctx) {
       sessionId: params.id,
       role: "assistant",
       content:
-        "### Остановка\n\nРабота оркестратора **прервана** по кнопке «Остановить». Дочерние процессы получили сигнал завершения; при необходимости запустите сценарий снова.",
+        "### Остановка\n\nАвтопроцессы по этой сессии **остановлены** (стоп-флаг + сигнал завершения). " +
+        "Новые автозапуски исполнителя/аудитора/команд для сессии блокируются до ручного возобновления.",
     },
   });
   await prisma.chatSession.update({ where: { id: params.id }, data: { updatedAt: new Date() } });
