@@ -29,6 +29,22 @@ function pickLastNonAuditUserMessage(msgs) {
   return "";
 }
 
+function countTrailingAuditReworks(msgs, maxScan = 200) {
+  let n = 0;
+  const start = Math.max(0, msgs.length - maxScan);
+  for (let i = msgs.length - 1; i >= start; i--) {
+    const m = msgs[i];
+    if (m?.role !== "assistant") continue;
+    const c = (m.content ?? "").trimStart();
+    if (c.startsWith("🕵️ Аудитор: Вердикт: Успех")) return n;
+    if (c.startsWith("🕵️ Аудитор: Вердикт: На доработку")) {
+      n += 1;
+      continue;
+    }
+  }
+  return n;
+}
+
 async function main() {
   const [sessionId, workspacePath, auditB64, timeoutStr] = process.argv.slice(2);
   if (!sessionId || !workspacePath || !auditB64) {
@@ -43,6 +59,8 @@ async function main() {
     select: { role: true, content: true },
   });
   const userTask = pickLastNonAuditUserMessage(tail);
+  const trailingReworks = countTrailingAuditReworks(tail);
+  const MAX_REWORKS = Number(process.env.AUDITOR_MAX_REWORKS || "5") || 5;
 
   const auditorPrompt =
     [
@@ -57,6 +75,7 @@ async function main() {
       "- verdict=success только если шаг действительно достиг цели / не оставил ошибок (даже если exit_code=0, но есть ошибки в stdout/stderr — это НЕ success).",
       "- При verdict=rework: next_context должен быть по существу (что исправить, где искать причину, какая следующая команда), а не общие слова.",
       "- Учитывай, что команды в этом чате выполняются через подтверждение пользователя: следующую команду проси оформлять как <<<SHELL_COMMAND>>>...<<</SHELL_COMMAND>>>.",
+      `- Лимит автодоработок: максимум ${MAX_REWORKS} подряд. Если явно требуется вмешательство человека (секреты, доступы, неоднозначное решение) — выбирай verdict=rework и в next_context сформулируй конкретный вопрос пользователю.`,
       "",
       "ЗАДАЧА ПОЛЬЗОВАТЕЛЯ (контекст исполнителя):",
       userTask || "(не найдено — используй содержимое тикета/переписки по смыслу)",
@@ -96,6 +115,23 @@ async function main() {
         sessionId,
         role: "assistant",
         content: `🕵️ Аудитор: Вердикт: Успех.\n${summary || ""}`.trim(),
+      },
+    });
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    return;
+  }
+
+  if (trailingReworks >= MAX_REWORKS) {
+    await prisma.chatMessage.create({
+      data: {
+        sessionId,
+        role: "assistant",
+        content:
+          `🕵️ Аудитор: Вердикт: На доработку (стоп-лимит). Уже было ${trailingReworks} попыток подряд — ` +
+          `автоперезапуск остановлен. Нужны действия/решение человека.\n\n` +
+          (summary ? `Кратко: ${summary}\n\n` : "") +
+          (nextCtx ? `Что сделать дальше:\n${nextCtx}\n\n` : "") +
+          "[***waiting for answer***]",
       },
     });
     await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
