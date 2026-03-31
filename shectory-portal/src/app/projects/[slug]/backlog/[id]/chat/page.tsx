@@ -23,8 +23,11 @@ import { formatMsgTime } from "@/lib/format-utils";
 type Msg = { id: string; role: string; content: string; createdAt: string };
 type Session = { id: string; title?: string; messages: Msg[] };
 type Ticket = { id: string; ticketKey?: string | null; title: string; description?: string | null; descriptionPrompt?: string };
+type MePayload = { ok: boolean; user: { email: string; role: string; fullName?: string } | null };
 
 const PAGE_LIMIT = 80;
+const EXECUTOR_LABEL = "Агент-исполнитель (R) Shectory (спецификация модели ИИ)";
+const AUDITOR_LABEL = "Агент-аудитор (R) Shectory (спецификация модели ИИ)";
 
 function messagesListEqual(a: Msg[], b: Msg[]): boolean {
   if (a.length !== b.length) return false;
@@ -51,6 +54,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [me, setMe] = useState<MePayload["user"] | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -189,6 +193,36 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     void load();
     void loadTicket();
   }, [load, loadTicket]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: MePayload) => {
+        if (!alive) return;
+        setMe(j?.user ?? null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setMe(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const roleLabel = useCallback(
+    (m: Msg): string => {
+      if (m.role === "user") {
+        const base = me?.role === "admin" || me?.role === "superadmin" ? "Админ" : "Пользователь";
+        const who = me?.fullName?.trim() ? `${me.fullName.trim()} (${me.email})` : me?.email || "—";
+        return `${base}: ${who}`;
+      }
+      if ((m.content ?? "").trimStart().startsWith("🕵️")) return AUDITOR_LABEL;
+      return EXECUTOR_LABEL;
+    },
+    [me]
+  );
 
   useEffect(() => {
     scrollListToBottomIfPinned("auto");
@@ -345,7 +379,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                   <div className="text-xs text-slate-500">
                     <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
                     <span className="mx-1.5">·</span>
-                    <span>{m.role}</span>
+                    <span>{roleLabel(m)}</span>
                   </div>
                   {m.role === "user" &&
                   m.content.startsWith(TICKET_CONTEXT_HEAD) &&

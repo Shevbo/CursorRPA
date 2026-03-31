@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { adminSessionOk } from "@/lib/admin-auth";
 import { ProjectDescriptionEditor } from "@/components/ProjectDescriptionEditor";
 import { LogoutButton } from "@/components/LogoutButton";
+import { UserProfileButton } from "@/components/UserProfileButton";
 import { CreateProjectButton } from "@/components/CreateProjectButton";
 import { ProjectCardAdminDialog } from "@/components/ProjectCardAdminDialog";
 import { ShectoryLogoPicker } from "@/components/ShectoryLogoPicker";
@@ -48,6 +49,7 @@ export default async function ProjectsPage({
             </Link>
           )}
           <CreateProjectButton canCreate={canEditDescriptions} />
+          <UserProfileButton />
           <LogoutButton />
         </div>
       </header>

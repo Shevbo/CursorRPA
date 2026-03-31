@@ -345,8 +345,22 @@ model PortalUser {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   emailCodes      PortalEmailCode[]
+  profile         PortalUserProfile?
 
   @@map("portal_users")
+}
+
+model PortalUserProfile {
+  id        String    @id @default(cuid())
+  userId    String    @unique @map("user_id")
+  user      PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String    @default("") @map("full_name")
+  phone     String    @default("")
+  avatarUrl String    @default("") @map("avatar_url")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("portal_user_profiles")
 }
 
 model PortalEmailCode {
