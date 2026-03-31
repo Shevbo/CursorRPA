@@ -5,6 +5,7 @@ import type { ChatMessage, ChatSession } from "@prisma/client";
 import { BacklogPanel } from "@/components/BacklogPanel";
 import { fetchChatSession, waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import { formatMsgTime } from "@/lib/format-utils";
+import ReactMarkdown from "react-markdown";
 
 type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
 type TestCase = { id: string; title: string; status: string; kind: string; scope: string; module?: { name: string } | null };
@@ -56,6 +57,10 @@ export function ProjectWorkspace({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [tree, setTree] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<string>("");
+  const [fileContent, setFileContent] = useState<string>("");
+  const [fileErr, setFileErr] = useState<string>("");
+  const [fileLoading, setFileLoading] = useState(false);
   const [tests, setTests] = useState<TestCase[]>([]);
   const [deployEnvs, setDeployEnvs] = useState<DeployEnvironment[]>([]);
   const [newTestTitle, setNewTestTitle] = useState("");
@@ -99,6 +104,53 @@ export function ProjectWorkspace({
       alive = false;
     };
   }, []);
+
+  const treeEntries = useMemo(() => {
+    const lines = (tree || "").split("\n");
+    const out: { kind: "dir" | "file"; name: string; rel: string; depth: number }[] = [];
+    const stack: string[] = [];
+    for (const raw of lines) {
+      const m = raw.match(/^(\s*)(📁|📄)\s+(.*)$/);
+      if (!m) continue;
+      const depth = Math.floor((m[1] || "").length / 2);
+      const kind = m[2] === "📁" ? "dir" : "file";
+      const name = (m[3] || "").trim();
+      stack.length = depth;
+      if (kind === "dir") stack[depth] = name;
+      const parts = stack.slice(0, depth).filter(Boolean);
+      if (kind === "file") parts.push(name);
+      const rel = parts.join("/");
+      out.push({ kind, name, rel, depth });
+    }
+    return out;
+  }, [tree]);
+
+  const selectedExt = useMemo(() => {
+    const n = selectedFile.split("/").pop() || "";
+    const i = n.lastIndexOf(".");
+    return i >= 0 ? n.slice(i + 1).toLowerCase() : "";
+  }, [selectedFile]);
+
+  const loadFile = useCallback(
+    async (rel: string) => {
+      setSelectedFile(rel);
+      setFileErr("");
+      setFileLoading(true);
+      try {
+        const sp = new URLSearchParams({ projectId, path: rel });
+        const r = await fetch(`/api/workspace/file?${sp.toString()}`, { credentials: "include" });
+        const j = (await r.json().catch(() => ({}))) as { ok?: boolean; content?: string; error?: string };
+        if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        setFileContent(String(j.content || ""));
+      } catch (e) {
+        setFileContent("");
+        setFileErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setFileLoading(false);
+      }
+    },
+    [projectId]
+  );
 
   const roleLabel = useCallback(
     (m: ChatMessage) => {
@@ -439,10 +491,65 @@ export function ProjectWorkspace({
         )}
 
         {tab === "files" && (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            <pre className="min-h-[12rem] rounded-lg border border-slate-800 bg-black/40 p-4 text-xs text-green-400">
-              {tree || "Нажмите вкладку ещё раз или откройте Files — загрузка дерева…"}
-            </pre>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[360px_1fr]">
+              <div className="min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20">
+                <div className="border-b border-slate-800 px-3 py-2 text-xs text-slate-400">
+                  Workspace: <span className="font-mono text-slate-300">{workspacePath}</span>
+                </div>
+                <div className="p-2">
+                  {treeEntries.length ? (
+                    <ul className="space-y-1 text-sm">
+                      {treeEntries.map((e, idx) => (
+                        <li key={`${e.rel}-${idx}`} style={{ paddingLeft: `${e.depth * 12}px` }}>
+                          {e.kind === "dir" ? (
+                            <div className="text-slate-500">📁 {e.name}</div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void loadFile(e.rel)}
+                              className={`w-full truncate rounded px-2 py-1 text-left font-mono text-xs ${
+                                selectedFile === e.rel ? "bg-slate-700/50 text-white" : "text-slate-200 hover:bg-slate-800/50"
+                              }`}
+                              title={e.rel}
+                            >
+                              📄 {e.rel}
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <pre className="min-h-[12rem] whitespace-pre-wrap p-2 text-xs text-green-400">
+                      {tree || "Откройте вкладку «Файлы» ещё раз — загрузка дерева…"}
+                    </pre>
+                  )}
+                </div>
+              </div>
+
+              <div className="min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
+                {!selectedFile ? (
+                  <div className="text-sm text-slate-500">Выберите файл слева.</div>
+                ) : fileLoading ? (
+                  <div className="text-sm text-slate-400">Загрузка файла…</div>
+                ) : fileErr ? (
+                  <div className="text-sm text-red-300">{fileErr}</div>
+                ) : (
+                  <>
+                    <div className="mb-3 text-xs text-slate-400">
+                      Файл: <span className="font-mono text-slate-200">{selectedFile}</span>
+                    </div>
+                    {selectedExt === "md" ? (
+                      <div className="prose prose-invert max-w-none">
+                        <ReactMarkdown>{fileContent}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <pre className="whitespace-pre-wrap font-mono text-xs text-slate-100">{fileContent}</pre>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
