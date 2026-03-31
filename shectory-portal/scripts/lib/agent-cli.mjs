@@ -79,6 +79,14 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
   loadApiKey();
   const env = slimAgentEnv();
   const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath];
+  // Shectory Portal policy: agent must be able to run shell/git/npm in project workspaces.
+  // Can be overridden for emergency hardening.
+  const sandboxMode = String(process.env.SHECTORY_AGENT_SANDBOX_MODE || "disabled").trim();
+  if (sandboxMode) args.push("--sandbox", sandboxMode);
+  const allowCommands = String(process.env.SHECTORY_AGENT_ALLOW_COMMANDS || "1").trim();
+  if (allowCommands !== "0" && allowCommands.toLowerCase() !== "false") {
+    args.push("--yolo");
+  }
   const m = String(modelId || "").trim();
   if (m) args.push("--model", m);
 
