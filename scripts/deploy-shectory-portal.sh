@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
+# Деплой Shectory Portal на VDS Shectory — та же машина, где лежит клон CursorRPA.
+# Запускать из корня репозитория:  bash scripts/deploy-shectory-portal.sh
+# Собирает shectory-portal, перезапускает systemd (system или user unit), проверяет CSS.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NEXT_PORT="${NEXT_PORT:-3000}"
 SERVICE_NAME="${SERVICE_NAME:-shectory-portal.service}"
 PUBLIC_URL="${PUBLIC_URL:-https://shectory.ru}"
-# After restart, curl ${PUBLIC_URL}/login and require global CSS → HTTP 200 (set 0 to skip).
+LOCAL_BASE="${LOCAL_BASE:-http://127.0.0.1:${NEXT_PORT}}"
+# После рестарта: 1) проверка Next на этой VDS (LOCAL_BASE) — обязательна при VERIFY_CSS=1;
+# 2) проверка публичного URL — предупреждение при расхождении (кэш nginx/CDN, старый HTML).
 VERIFY_CSS="${VERIFY_CSS:-1}"
 DO_GIT_PULL="${DO_GIT_PULL:-0}"
 DO_DB_PUSH="${DO_DB_PUSH:-0}"
 DO_DB_SEED="${DO_DB_SEED:-0}"
 PORTAL_DIR="${PORTAL_DIR:-$ROOT_DIR/shectory-portal}"
-NEXT_PORT="${NEXT_PORT:-3000}"
 
 cd "$ROOT_DIR"
 
@@ -32,6 +37,13 @@ else
   npm i
 fi
 
+echo "[deploy] portal dependencies (shectory-portal — обязательно перед next build)"
+if [[ -f shectory-portal/package-lock.json ]]; then
+  npm ci --prefix shectory-portal
+else
+  npm install --prefix shectory-portal
+fi
+
 if [[ "$DO_DB_PUSH" == "1" ]]; then
   echo "[deploy] prisma db push"
   npm run -s db:push -- --accept-data-loss
@@ -50,24 +62,52 @@ if [[ -n "${BUILT_CSS}" ]]; then
   echo "[deploy] built css: ${BUILT_CSS#${ROOT_DIR}/}"
 fi
 
+# Иначе старый next-server (не из этого user unit) держит :PORT — новый процесс не подхватывает свежий .next → 404 на CSS.
+free_port() {
+  local port="$1"
+  if ! command -v ss >/dev/null 2>&1; then
+    return 0
+  fi
+  local pid
+  pid="$(ss -ltnp 2>/dev/null | awk -v p=":${port}" '$0 ~ p && $0 ~ /pid=/ { match($0,/pid=([0-9]+)/,m); print m[1]; exit }')"
+  if [[ -n "${pid:-}" ]]; then
+    echo "[deploy] free port ${port}: stopping pid ${pid} (stale listener)"
+    kill "$pid" 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+free_port "${NEXT_PORT}"
+
+UNIT_RESTARTED=0
 if command -v systemctl >/dev/null 2>&1; then
   echo "[deploy] restart systemd unit: $SERVICE_NAME"
-  if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
-    # user may not have sudo; try both
+  # 1) Системный unit
+  if systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
     if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-      sudo systemctl restart "$SERVICE_NAME" || systemctl restart "$SERVICE_NAME"
+      sudo systemctl restart "$SERVICE_NAME" 2>/dev/null || systemctl restart "$SERVICE_NAME"
     else
-      sudo systemctl start "$SERVICE_NAME" || systemctl start "$SERVICE_NAME"
+      sudo systemctl start "$SERVICE_NAME" 2>/dev/null || systemctl start "$SERVICE_NAME"
     fi
-    sudo systemctl --no-pager --full status "$SERVICE_NAME" -n 30 || systemctl --no-pager --full status "$SERVICE_NAME" -n 30
+    sudo systemctl --no-pager --full status "$SERVICE_NAME" -n 30 2>/dev/null || systemctl --no-pager --full status "$SERVICE_NAME" -n 30
+    UNIT_RESTARTED=1
+  # 2) User unit (типично: shectory-portal.service у пользователя shectory на VDS)
+  elif systemctl --user list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
+    if systemctl --user is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+      systemctl --user restart "$SERVICE_NAME"
+    else
+      systemctl --user start "$SERVICE_NAME"
+    fi
+    systemctl --user --no-pager --full status "$SERVICE_NAME" -n 30
+    UNIT_RESTARTED=1
   else
-    echo "[deploy] WARN: unit not found: $SERVICE_NAME (skipping systemctl)"
+    echo "[deploy] WARN: unit not found (system nor user): $SERVICE_NAME"
   fi
 else
   echo "[deploy] WARN: systemctl not available (skipping restart)"
 fi
 
-if [[ ! "$(command -v systemctl >/dev/null 2>&1; echo $?)" == "0" ]] || ! systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
+if [[ "$UNIT_RESTARTED" -eq 0 ]]; then
   # Fallback for setups where Next is started without systemd unit.
   if command -v pkill >/dev/null 2>&1 && command -v nohup >/dev/null 2>&1; then
     echo "[deploy] fallback restart: pkill + nohup npm run start (port $NEXT_PORT)"
@@ -96,28 +136,38 @@ if [[ ! "$(command -v systemctl >/dev/null 2>&1; echo $?)" == "0" ]] || ! system
   fi
 fi
 
+# Надёжнее, чем парсить /login: запросить ровно тот CSS, что только что собрали (избегает рассинхрона хешей).
+verify_built_css_url() {
+  local base="$1"
+  local label="$2"
+  local rel
+  if [[ -z "${BUILT_CSS}" || ! -f "${BUILT_CSS}" ]]; then
+    echo "[deploy] ${label}: no built css file to verify"
+    return 1
+  fi
+  rel="/_next/static/css/$(basename "$BUILT_CSS")"
+  local code
+  code="$(curl -sS -o /dev/null -w "%{http_code}" -H 'Cache-Control: no-cache' "${base}${rel}" 2>/dev/null || echo "000")"
+  if [[ "${code}" != "200" ]]; then
+    echo "[deploy] ${label}: ${base}${rel} → HTTP ${code}"
+    return 1
+  fi
+  echo "[deploy] ${label}: ${rel} → 200"
+  return 0
+}
+
 if [[ "${VERIFY_CSS}" == "1" ]] && command -v curl >/dev/null 2>&1; then
-  echo "[deploy] verify live stylesheet (GET ${PUBLIC_URL}/login → CSS URL → expect 200)"
-  sleep 2
-  LOGIN_HTML="$(curl -fsS "${PUBLIC_URL}/login" 2>/dev/null || true)"
-  LIVE_CSS="$(echo "$LOGIN_HTML" | tr -d '\r\n' | grep -oE '/_next/static/css/[a-f0-9]+\.css' | head -n 1 || true)"
-  if [[ -z "${LIVE_CSS}" ]]; then
-    echo "[deploy] WARN: could not parse CSS path from /login HTML (skip VERIFY_CSS)"
+  sleep 4
+  echo "[deploy] verify built CSS on this VDS (Next ${LOCAL_BASE})"
+  if ! verify_built_css_url "${LOCAL_BASE}" "local"; then
+    echo "[deploy] ERROR: Next on this machine does not serve the new CSS. Check shectory-portal.service WorkingDirectory=${PORTAL_DIR} and PORT=${NEXT_PORT}."
+    exit 1
+  fi
+  echo "[deploy] verify public URL (optional): ${PUBLIC_URL}"
+  if verify_built_css_url "${PUBLIC_URL}" "public"; then
+    :
   else
-    CSS_CODE="$(curl -sS -o /dev/null -w "%{http_code}" "${PUBLIC_URL}${LIVE_CSS}" 2>/dev/null || echo "000")"
-    if [[ "${CSS_CODE}" != "200" ]]; then
-      echo "[deploy] ERROR: ${PUBLIC_URL}${LIVE_CSS} returned HTTP ${CSS_CODE} (expected 200)."
-      echo "[deploy]         UI will be unstyled. Fix nginx / reverse proxy for /_next/static/*"
-      echo "[deploy]         (see scripts/nginx-shectory-portal.conf)."
-      exit 1
-    fi
-    echo "[deploy] OK: stylesheet ${LIVE_CSS} → 200"
-    if [[ -n "${BUILT_CSS}" ]]; then
-      BUILT_CSS_BASENAME="/_next/static/css/$(basename "$BUILT_CSS")"
-      if [[ "${BUILT_CSS_BASENAME}" != "${LIVE_CSS}" ]]; then
-        echo "[deploy] WARN: live HTML references ${LIVE_CSS} but this build has ${BUILT_CSS_BASENAME} — stale cache or wrong WorkingDirectory."
-      fi
-    fi
+    echo "[deploy] WARN: public URL did not return new CSS (nginx/HTML cache or proxy). Локальный Next отдаёт сборку — см. scripts/nginx-shectory-portal.conf"
   fi
 fi
 

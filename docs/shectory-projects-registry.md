@@ -2,11 +2,11 @@
 
 Источник правды для путей и ролей серверов. **Секреты и значения `.env` сюда не пишутся** — только имена переменных, если нужно, в колонке `notes`.
 
-**Модель репозитория:** репозиторий **CursorRPA** считается **монолитом**: в одном Git-хранилище лежат `docs/`, `scripts/`, `services/telegram-bridge/`, каталог **`shectory-portal/`** (исходники Web UI). На VDS прод-сборка портала может собираться из клона в `~/workspaces/CursorRPA/shectory-portal` или из отдельного деплой-каталога — зафиксируйте фактический `WorkingDirectory` в unit `shectory-portal.service`.
+**Модель репозитория:** репозиторий **CursorRPA** считается **монолитом**: в одном Git-хранилище лежат `docs/`, `scripts/`, `services/telegram-bridge/`, каталог **`shectory-portal/`** (исходники Web UI). **VDS Shectory — это та же машина**, где лежит клон (например `~/workspaces/CursorRPA`); прод-сборка портала делается **на месте** скриптом `scripts/deploy-shectory-portal.sh` из корня клона. Зафиксируйте фактический `WorkingDirectory` в unit `shectory-portal.service` (часто user-unit под `shectory`).
 
 Обновляйте при смене папок клонов или `git remote`.
 
-**Последнее исследование:** 2026-03-24 (структура `~/workspaces`, `git config`, `prisma/seed.ts` в корне монолита, проверка доступов `github.com`, `git ls-remote`, `https://shectory.ru`, SSH `shectory-work`).
+**Последнее исследование:** 2026-03-31 (общий хост с Node: **`docs/raspi-safe-node-process-management-ru.md`**, **`scripts/kill-node-in-workdir.sh`**; ранее — структура `~/workspaces`, `prisma/seed.ts`, SSH `shectory-work`).
 
 ---
 
