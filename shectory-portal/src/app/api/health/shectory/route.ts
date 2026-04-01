@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminAuthOk } from "@/lib/admin-auth";
 import { cachedHealth } from "@/lib/health-cache";
+import { tcpPortOpen } from "@/lib/tcp-port-open";
 import os from "node:os";
 import { readFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
@@ -77,12 +78,21 @@ export async function GET(req: Request) {
     const ramUsedPct = pct(memUsed, mem.total);
     const diskUsedPct = pct(disk.used, disk.total);
 
+    const listenPort = parseInt(process.env.PORT || "3000", 10);
+    const unitUser = systemctlActive("user", "shectory-portal.service");
+    const unitSystem = systemctlActive("system", "shectory-portal.service");
+    const portListening = await tcpPortOpen("127.0.0.1", listenPort, 2000);
+    const portalUp = unitUser || unitSystem || portListening;
+
     const services = [
-      { name: "shectory-portal.service", ok: systemctlActive("user", "shectory-portal.service") },
+      {
+        name: `Портал :${listenPort}`,
+        ok: portalUp,
+      },
       { name: "nginx", ok: systemctlActive("system", "nginx") },
     ];
 
-    const portalSvc = services[0]?.ok ?? true;
+    const portalSvc = portalUp;
     const anySvcDown = services.some((s) => !s.ok);
 
     // Simple health heuristic

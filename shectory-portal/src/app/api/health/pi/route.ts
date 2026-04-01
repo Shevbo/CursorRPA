@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import net from "node:net";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { tcpPortOpen } from "@/lib/tcp-port-open";
 import { cachedHealth } from "@/lib/health-cache";
 import { execSync } from "node:child_process";
 
@@ -17,6 +18,7 @@ function safeJsonParse(text: string): any | null {
 /** Как в services/telegram-bridge/bot.py: не перетираем уже заданные переменные (портал .env важнее). */
 function mergeTelegramBridgePiEnv(): void {
   const candidates = [
+    join(homedir(), "workspaces", "CursorRPA", "services", "telegram-bridge", ".env"),
     join(process.cwd(), "..", "services", "telegram-bridge", ".env"),
     join(process.cwd(), "services", "telegram-bridge", ".env"),
   ];
@@ -53,22 +55,6 @@ function parseMonitorHosts(): string[] {
   if (raw) return raw.split(",").map((h) => h.trim()).filter(Boolean);
   const one = (process.env.PI_MONITOR_HOST || "").trim();
   return one ? [one] : [];
-}
-
-function tcpPortOpen(host: string, port: number, timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sock = net.createConnection({ host, port }, () => {
-      sock.end();
-      resolve(true);
-    });
-    sock.setTimeout(timeoutMs, () => {
-      sock.destroy();
-      resolve(false);
-    });
-    sock.on("error", () => {
-      resolve(false);
-    });
-  });
 }
 
 async function tcpChecksFromPortalHost(
@@ -179,8 +165,13 @@ export async function GET(req: Request) {
       out.pi = {
         ok: false,
         metricsOk: false,
-        error: "Задайте PI_MONITOR_HOST или PI_MONITOR_SSH (как у telegram-bridge), либо положите .env рядом с ботом.",
-        services: [],
+        error: "Задайте PI_MONITOR_HOST или PI_MONITOR_SSH (как у telegram-bridge).",
+        services: [
+          {
+            name: "Pi: задайте PI_MONITOR_HOST(S) или PI_MONITOR_SSH в .env портала / services/telegram-bridge/.env",
+            ok: false,
+          },
+        ],
         source: "unconfigured",
       };
       out.status = "critical";
