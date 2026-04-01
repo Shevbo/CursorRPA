@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { cachedHealth } from "@/lib/health-cache";
 import os from "node:os";
 import { readFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
@@ -25,6 +26,20 @@ async function memInfo(): Promise<{ total: number; available: number }> {
   return { total, available };
 }
 
+function systemctlActive(scope: "user" | "system", unit: string): boolean {
+  try {
+    const prefix = scope === "user" ? "systemctl --user " : "systemctl ";
+    const out = execSync(`${prefix}is-active ${unit}`, {
+      encoding: "utf8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    return out === "active";
+  } catch {
+    return false;
+  }
+}
+
 function diskRoot(): { total: number; free: number; used: number } {
   try {
     const out = execSync("df -k /", { encoding: "utf8" });
@@ -47,49 +62,65 @@ function diskRoot(): { total: number; free: number; used: number } {
 export async function GET(req: Request) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const cpu = {
-    cores: os.cpus()?.length ?? 0,
-    load1: os.loadavg?.()[0] ?? 0,
-    load5: os.loadavg?.()[1] ?? 0,
-    load15: os.loadavg?.()[2] ?? 0,
-  };
+  const payload = await cachedHealth("shectory", 5 * 60_000, async () => {
+    const cpu = {
+      cores: os.cpus()?.length ?? 0,
+      load1: os.loadavg?.()[0] ?? 0,
+      load5: os.loadavg?.()[1] ?? 0,
+      load15: os.loadavg?.()[2] ?? 0,
+    };
 
-  const mem = await memInfo();
-  const memUsed = Math.max(0, mem.total - mem.available);
-  const disk = diskRoot();
+    const mem = await memInfo();
+    const memUsed = Math.max(0, mem.total - mem.available);
+    const disk = diskRoot();
 
-  const ramUsedPct = pct(memUsed, mem.total);
-  const diskUsedPct = pct(disk.used, disk.total);
+    const ramUsedPct = pct(memUsed, mem.total);
+    const diskUsedPct = pct(disk.used, disk.total);
 
-  // Simple health heuristic
-  const status =
-    disk.total > 0 && disk.free / disk.total < 0.05
-      ? "critical"
-      : mem.total > 0 && mem.available / mem.total < 0.08
-      ? "critical"
-      : disk.total > 0 && disk.free / disk.total < 0.12
-      ? "warn"
-      : mem.total > 0 && mem.available / mem.total < 0.15
-      ? "warn"
-      : "ok";
+    const services = [
+      { name: "shectory-portal.service", ok: systemctlActive("user", "shectory-portal.service") },
+      { name: "nginx", ok: systemctlActive("system", "nginx") },
+    ];
 
-  return NextResponse.json({
-    ok: true,
-    status,
-    cpu,
-    ram: {
-      total: mem.total,
-      available: mem.available,
-      used: memUsed,
-      usedPct: ramUsedPct,
-    },
-    hdd: {
-      total: disk.total,
-      free: disk.free,
-      used: disk.used,
-      usedPct: diskUsedPct,
-    },
-    at: new Date().toISOString(),
+    const portalSvc = services[0]?.ok ?? true;
+    const anySvcDown = services.some((s) => !s.ok);
+
+    // Simple health heuristic
+    let status: "ok" | "warn" | "critical" =
+      disk.total > 0 && disk.free / disk.total < 0.05
+        ? "critical"
+        : mem.total > 0 && mem.available / mem.total < 0.08
+          ? "critical"
+          : disk.total > 0 && disk.free / disk.total < 0.12
+            ? "warn"
+            : mem.total > 0 && mem.available / mem.total < 0.15
+              ? "warn"
+              : "ok";
+
+    if (!portalSvc) status = "critical";
+    else if (anySvcDown && status === "ok") status = "warn";
+
+    return {
+      ok: true,
+      status,
+      cpu,
+      ram: {
+        total: mem.total,
+        available: mem.available,
+        used: memUsed,
+        usedPct: ramUsedPct,
+      },
+      hdd: {
+        total: disk.total,
+        free: disk.free,
+        used: disk.used,
+        usedPct: diskUsedPct,
+      },
+      services,
+      at: new Date().toISOString(),
+      intervalSec: 300,
+    };
   });
+  return NextResponse.json(payload);
 }
 

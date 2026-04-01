@@ -4,10 +4,12 @@ import { adminSessionOk } from "@/lib/admin-auth";
 import { ProjectDescriptionEditor } from "@/components/ProjectDescriptionEditor";
 import { LogoutButton } from "@/components/LogoutButton";
 import { UserProfileButton } from "@/components/UserProfileButton";
+import { NotificationBell } from "@/components/NotificationBell";
 import { CreateProjectButton } from "@/components/CreateProjectButton";
 import { ProjectCardAdminDialog } from "@/components/ProjectCardAdminDialog";
 import { ShectoryLogoPicker } from "@/components/ShectoryLogoPicker";
-import { ShectoryHealthWidget } from "@/components/ShectoryHealthWidget";
+import { HealthDiagnosticDock } from "@/components/HealthDiagnosticDock";
+import { ensureShevboPiReferenceItem } from "@/lib/ensure-platforms-pi";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,8 @@ export default async function ProjectsPage({
 }) {
   const canEditDescriptions = adminSessionOk();
   const showCardDialog = canEditDescriptions && searchParams?.editCards === "1";
+
+  await ensureShevboPiReferenceItem();
 
   const [projects, categories] = await Promise.all([
     prisma.project.findMany({
@@ -30,7 +34,8 @@ export default async function ProjectsPage({
   ]);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-6">
+    <div className="relative min-h-screen">
+    <main className="mx-auto max-w-7xl px-4 py-6 pb-[9.5rem]">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
         <div className="flex items-center gap-3">
           <ShectoryLogoPicker canUpload={canEditDescriptions} sizeClass="h-14" />
@@ -39,7 +44,8 @@ export default async function ProjectsPage({
             <p className="mt-0.5 text-slate-400">Панель управления · проекты</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <NotificationBell />
           {canEditDescriptions && (
             <Link
               href="/projects?editCards=1"
@@ -53,7 +59,6 @@ export default async function ProjectsPage({
           <LogoutButton />
         </div>
       </header>
-
       <section className="mb-10">
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-slate-500">Справочники</h2>
         <div className="flex flex-wrap gap-4">
@@ -204,8 +209,9 @@ export default async function ProjectsPage({
           }))}
         />
       )}
-      <ShectoryHealthWidget />
     </main>
+    <HealthDiagnosticDock />
+    </div>
   );
 }
 
