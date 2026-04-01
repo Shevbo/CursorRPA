@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { adminAuthOk } from "@/lib/admin-auth";
 import { tcpPortOpen } from "@/lib/tcp-port-open";
 import { cachedHealth } from "@/lib/health-cache";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 function safeJsonParse(text: string): any | null {
   try {
@@ -13,6 +13,36 @@ function safeJsonParse(text: string): any | null {
   } catch {
     return null;
   }
+}
+
+/** Отдельный ключ для systemd/next без ssh-agent (см. PI_MONITOR_IDENTITY_FILE). */
+function resolveSshCommandForPi(base: string): string {
+  const cmd = base.trim();
+  const identity = (process.env.PI_MONITOR_IDENTITY_FILE || "").trim();
+  if (!identity || !/^ssh\s+/i.test(cmd)) return cmd;
+  return cmd.replace(/^ssh\s+/i, `ssh -o IdentitiesOnly=yes -i ${JSON.stringify(identity)} `);
+}
+
+function runSshRemoteScript(sshCmd: string, remoteScript: string, timeoutMs: number): string {
+  const full = `${sshCmd} ${JSON.stringify(remoteScript)}`;
+  const r = spawnSync(full, {
+    shell: true,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    env: { ...process.env, HOME: process.env.HOME || homedir() },
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  const out = (r.stdout || "").trim();
+  const err = (r.stderr || "").trim();
+  if (r.error) {
+    throw new Error(`ssh: ${r.error.message}${err ? `\n${err}` : ""}`.slice(0, 480));
+  }
+  if (r.status !== 0) {
+    const msg = [err, out].filter(Boolean).join("\n").trim();
+    throw new Error((msg || `ssh exited ${r.status}`).slice(0, 480));
+  }
+  return out;
 }
 
 function applyDotenvLineForPi(key: string, valRaw: string): void {
@@ -87,6 +117,24 @@ function parseMonitorHosts(): string[] {
   const one = (process.env.PI_MONITOR_HOST || "").trim();
   const merged = one && !fromList.includes(one) ? [...fromList, one] : fromList;
   return Array.from(new Set(merged));
+}
+
+/** Несколько хостов в PI_MONITOR_HOSTS — это зеркала; с VDS LAN часто недоступен, домен — да. OK = хотя бы одно зеркало. */
+function aggregatePiMirrorServices(
+  rows: { name: string; ok: boolean }[],
+  syslogPort: number,
+  pingPort: number
+): { name: string; ok: boolean }[] {
+  const hasSyslog = rows.some((r) => r.name.startsWith("Syslog "));
+  const hasPm = rows.some((r) => r.name.startsWith("PingMaster "));
+  if (!hasSyslog && !hasPm) return rows;
+  if (rows.length <= 2) return rows;
+  const syslogOk = rows.some((r) => r.ok && r.name.startsWith("Syslog "));
+  const pmOk = rows.some((r) => r.ok && r.name.startsWith("PingMaster "));
+  return [
+    { name: `Syslog :${syslogPort}`, ok: syslogOk },
+    { name: `PingMaster :${pingPort}`, ok: pmOk },
+  ];
 }
 
 async function tcpChecksFromPortalHost(
@@ -168,10 +216,10 @@ function buildRemoteCombinedScript(
 export async function GET(req: Request) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const payload = await cachedHealth("pi_v2", 5 * 60_000, async () => {
+  const payload = await cachedHealth("pi_v4", 5 * 60_000, async () => {
     mergeTelegramBridgePiEnv();
 
-    const sshCmd = (process.env.PI_MONITOR_SSH || process.env.PI_HEALTH_SSH || "").trim();
+    const sshCmd = resolveSshCommandForPi(process.env.PI_MONITOR_SSH || process.env.PI_HEALTH_SSH || "");
     const syslogPort = parseInt(process.env.PI_SYSLOG_PORT || "4444", 10);
     const pingPort = parseInt(process.env.PI_PINGMASTER_PORT || "4555", 10);
     const tcpTimeout = parseFloat(process.env.PI_MONITOR_TCP_TIMEOUT || "3");
@@ -216,13 +264,7 @@ export async function GET(req: Request) {
       try {
         const py = buildRemoteCombinedScript(hosts, syslogPort, pingPort, tcpTimeout);
         const remote = `python3 - <<'PY'\n${py}\nPY`;
-        const cmd = `${sshCmd} ${JSON.stringify(remote)}`;
-        const raw = execSync(cmd, {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-          timeout: sshTimeoutMs,
-          env: { ...process.env, HOME: process.env.HOME || homedir() },
-        }).trim();
+        const raw = runSshRemoteScript(sshCmd, remote, sshTimeoutMs);
         const j = safeJsonParse(raw);
         if (j && typeof j === "object") {
           services = Array.isArray(j.services) ? j.services : [];
@@ -251,6 +293,7 @@ export async function GET(req: Request) {
           services = await tcpChecksFromPortalHost(hosts, syslogPort, pingPort, tcpTimeout);
           out.pi.services = services;
           out.pi.source = "portal_host_fallback";
+          out.pi.skippedMetrics = true;
         }
       }
     } else if (!sshCmd && hosts.length > 0) {
@@ -267,7 +310,9 @@ export async function GET(req: Request) {
     const metricsOk = !!out.pi.metricsOk;
     const ramFree = Number(out.pi?.ram?.free_pct ?? 100);
     const hddFree = Number(out.pi?.hdd?.free_pct ?? 100);
-    const svcList = Array.isArray(out.pi?.services) ? out.pi.services : [];
+    let svcList = Array.isArray(out.pi?.services) ? out.pi.services : [];
+    svcList = aggregatePiMirrorServices(svcList, syslogPort, pingPort);
+    out.pi.services = svcList;
     const anySvcDown = svcList.some((s: { ok?: boolean }) => !s?.ok);
 
     if (!metricsOk && svcList.length === 0) out.status = "critical";
