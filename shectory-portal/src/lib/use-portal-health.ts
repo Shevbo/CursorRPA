@@ -33,6 +33,10 @@ export type PiHealth = {
   status: "ok" | "warn" | "critical";
   pi: {
     ok: boolean;
+    metricsOk?: boolean;
+    skippedMetrics?: boolean;
+    source?: string;
+    error?: string;
     cpu?: { load1: number; load5: number; load15: number };
     ram?: { free_pct: number };
     hdd?: { free_pct: number };

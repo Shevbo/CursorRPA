@@ -105,11 +105,13 @@ export function HealthDiagnosticDock() {
       ? "critical"
       : pi?.status === "warn"
         ? "warn"
-        : pi?.pi?.ok
+        : pi?.status === "ok"
           ? "ok"
-          : pi
-            ? "warn"
-            : "idle";
+          : pi?.pi?.ok
+            ? "ok"
+            : pi
+              ? "warn"
+              : "idle";
 
   return (
     <div
@@ -181,9 +183,11 @@ export function HealthDiagnosticDock() {
                 CPU{" "}
                 {pi?.pi?.ok
                   ? `${fmtHealthPct(pi.pi.cpu?.load1 ?? 0)} / ${fmtHealthPct(pi.pi.cpu?.load5 ?? 0)} / ${fmtHealthPct(pi.pi.cpu?.load15 ?? 0)}`
-                  : pi
-                    ? "down"
-                    : "…"}
+                  : pi?.pi?.services?.length
+                    ? "—"
+                    : pi
+                      ? "down"
+                      : "…"}
               </div>
               <div>
                 RAM used:{" "}
@@ -193,13 +197,16 @@ export function HealthDiagnosticDock() {
                 HDD used:{" "}
                 {pi?.pi?.ok ? `${fmtHealthPct(100 - (pi.pi.hdd?.free_pct ?? 0))}%` : pi ? "—" : "…"}
               </div>
+              {pi?.pi?.skippedMetrics ? (
+                <div className="text-[10px] text-slate-500">Метрики: только с PI_MONITOR_SSH</div>
+              ) : null}
               <div className="text-[10px] text-slate-500">
                 {pi?.at ? new Date(pi.at).toLocaleTimeString("ru-RU") : ""}
               </div>
             </>,
             serviceListBlock(pi?.pi?.services, {
               idle: !pi,
-              offline: !!(pi && !pi.pi?.ok),
+              offline: !!(pi && !pi.pi?.ok && !(pi.pi.services?.length)),
             }),
             piTone
           )}
