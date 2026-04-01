@@ -15,46 +15,78 @@ function safeJsonParse(text: string): any | null {
   }
 }
 
-/** Как в services/telegram-bridge/bot.py: не перетираем уже заданные переменные (портал .env важнее). */
-function mergeTelegramBridgePiEnv(): void {
-  const candidates = [
-    join(homedir(), "workspaces", "CursorRPA", "services", "telegram-bridge", ".env"),
-    join(process.cwd(), "..", "services", "telegram-bridge", ".env"),
-    join(process.cwd(), "services", "telegram-bridge", ".env"),
-  ];
-  for (const p of candidates) {
-    if (!existsSync(p)) continue;
-    try {
-      const raw = readFileSync(p, "utf8");
-      for (const line of raw.split("\n")) {
-        const t = line.trim();
-        if (!t || t.startsWith("#")) continue;
-        const eq = t.indexOf("=");
-        if (eq < 1) continue;
-        const key = t.slice(0, eq).trim();
-        if (!key.startsWith("PI_")) continue;
-        if (process.env[key] !== undefined && String(process.env[key]).trim() !== "") continue;
-        let val = t.slice(eq + 1).trim();
-        if (
-          (val.startsWith('"') && val.endsWith('"')) ||
-          (val.startsWith("'") && val.endsWith("'"))
-        ) {
-          val = val.slice(1, -1);
-        }
-        process.env[key] = val;
-      }
-    } catch {
-      /* ignore */
+function applyDotenvLineForPi(key: string, valRaw: string): void {
+  if (!key.startsWith("PI_")) return;
+  if (process.env[key] !== undefined && String(process.env[key]).trim() !== "") return;
+  let val = valRaw.trim();
+  if (
+    (val.startsWith('"') && val.endsWith('"')) ||
+    (val.startsWith("'") && val.endsWith("'"))
+  ) {
+    val = val.slice(1, -1);
+  }
+  if (val === "") return;
+  process.env[key] = val;
+}
+
+function mergePiKeysFromFile(filePath: string): void {
+  if (!existsSync(filePath)) return;
+  try {
+    const raw = readFileSync(filePath, "utf8");
+    for (const line of raw.split(/\n/)) {
+      let t = line.trim().replace(/\r$/, "");
+      if (!t || t.startsWith("#")) continue;
+      if (t.startsWith("export ")) t = t.slice(7).trim();
+      const eq = t.indexOf("=");
+      if (eq < 1) continue;
+      const key = t.slice(0, eq).trim();
+      const val = t.slice(eq + 1);
+      applyDotenvLineForPi(key, val);
     }
-    break;
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Подтягивает PI_* как у telegram-bridge: все подходящие файлы по очереди (раньше брался только первый .env,
+ * из-за чего игнорировался project-envs/cursor-rpa.env с реальными PI_MONITOR_*).
+ */
+function mergeTelegramBridgePiEnv(): void {
+  const roots = new Set<string>();
+  const hr = homedir();
+  roots.add(join(hr, "workspaces", "CursorRPA"));
+  if (process.env.CURSOR_RPA_ROOT?.trim()) roots.add(process.env.CURSOR_RPA_ROOT.trim());
+  if (process.env.CURSOR_RPA_FIXED_WORKSPACE?.trim()) roots.add(process.env.CURSOR_RPA_FIXED_WORKSPACE.trim());
+
+  const candidates: string[] = [];
+  for (const root of Array.from(roots)) {
+    candidates.push(
+      join(root, "services", "telegram-bridge", "project-envs", "cursor-rpa.env"),
+      join(root, "services", "telegram-bridge", ".env")
+    );
+  }
+  candidates.push(
+    join(process.cwd(), "..", "services", "telegram-bridge", "project-envs", "cursor-rpa.env"),
+    join(process.cwd(), "..", "services", "telegram-bridge", ".env"),
+    join(process.cwd(), "services", "telegram-bridge", "project-envs", "cursor-rpa.env"),
+    join(process.cwd(), "services", "telegram-bridge", ".env")
+  );
+
+  const seen = new Set<string>();
+  for (const p of candidates) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    mergePiKeysFromFile(p);
   }
 }
 
 function parseMonitorHosts(): string[] {
   const raw = (process.env.PI_MONITOR_HOSTS || "").trim();
-  if (raw) return raw.split(",").map((h) => h.trim()).filter(Boolean);
+  const fromList = raw ? raw.split(",").map((h) => h.trim()).filter(Boolean) : [];
   const one = (process.env.PI_MONITOR_HOST || "").trim();
-  return one ? [one] : [];
+  const merged = one && !fromList.includes(one) ? [...fromList, one] : fromList;
+  return Array.from(new Set(merged));
 }
 
 async function tcpChecksFromPortalHost(
@@ -136,7 +168,7 @@ function buildRemoteCombinedScript(
 export async function GET(req: Request) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const payload = await cachedHealth("pi", 5 * 60_000, async () => {
+  const payload = await cachedHealth("pi_v2", 5 * 60_000, async () => {
     mergeTelegramBridgePiEnv();
 
     const sshCmd = (process.env.PI_MONITOR_SSH || process.env.PI_HEALTH_SSH || "").trim();
@@ -189,6 +221,7 @@ export async function GET(req: Request) {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
           timeout: sshTimeoutMs,
+          env: { ...process.env, HOME: process.env.HOME || homedir() },
         }).trim();
         const j = safeJsonParse(raw);
         if (j && typeof j === "object") {

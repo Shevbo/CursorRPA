@@ -197,8 +197,12 @@ export function HealthDiagnosticDock() {
                 HDD used:{" "}
                 {pi?.pi?.ok ? `${fmtHealthPct(100 - (pi.pi.hdd?.free_pct ?? 0))}%` : pi ? "—" : "…"}
               </div>
-              {pi?.pi?.skippedMetrics ? (
-                <div className="text-[10px] text-slate-500">Метрики: только с PI_MONITOR_SSH</div>
+              {pi?.pi?.metricsOk !== true && (pi?.pi?.services?.length ?? 0) > 0 ? (
+                <div className="text-[10px] text-slate-500">
+                  {pi?.pi?.skippedMetrics
+                    ? "CPU/RAM: нужен рабочий PI_MONITOR_SSH (ключ доступен процессу портала)"
+                    : "CPU/RAM: SSH к Pi не ответил"}
+                </div>
               ) : null}
               <div className="text-[10px] text-slate-500">
                 {pi?.at ? new Date(pi.at).toLocaleTimeString("ru-RU") : ""}
