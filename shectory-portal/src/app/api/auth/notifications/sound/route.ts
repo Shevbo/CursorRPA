@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   } catch {
     return new NextResponse(null, { status: 404 });
   }
-  return new NextResponse(buf, {
+  return new NextResponse(new Uint8Array(buf), {
     status: 200,
     headers: {
       "Content-Type": "audio/mpeg",
