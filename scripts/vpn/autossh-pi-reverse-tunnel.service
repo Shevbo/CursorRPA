@@ -1,0 +1,31 @@
+[Unit]
+Description=Autossh reverse tunnel Pi -> VDS (TCP/443 fallback)
+Documentation=https://github.com/shectory/CursorRPA/tree/main/scripts/vpn
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+# Load VDS connection settings
+EnvironmentFile=/etc/shectory/autossh-tunnel.env
+ExecStart=/usr/bin/autossh \
+  -M 0 \
+  -N \
+  -o "ServerAliveInterval=30" \
+  -o "ServerAliveCountMax=3" \
+  -o "ExitOnForwardFailure=yes" \
+  -o "StrictHostKeyChecking=no" \
+  -o "IdentityFile=${TUNNEL_SSH_KEY}" \
+  -p ${TUNNEL_SSH_PORT:-443} \
+  -R 127.0.0.1:${TUNNEL_SYSLOG_PORT:-24444}:localhost:4444 \
+  -R 127.0.0.1:${TUNNEL_PINGMASTER_PORT:-24555}:localhost:4555 \
+  -R 127.0.0.1:${TUNNEL_SSH_RPORT:-22022}:localhost:22 \
+  ${TUNNEL_USER}@${TUNNEL_HOST}
+Restart=always
+RestartSec=30
+# Give autossh time to establish connection
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
