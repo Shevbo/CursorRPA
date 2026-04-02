@@ -9,6 +9,7 @@ import {
   CHAT_SCROLL_TO_BOTTOM_TYPE,
   type ChatAgentPresence,
   looksLikeAssistantBusy,
+  looksLikeAuditorBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
@@ -103,7 +104,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     }
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
-    if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
+    if (looksLikeAuditorBusy(last.content ?? "")) return "auditing";
     return "idle";
   }, [loading, err, session?.messages]);
 

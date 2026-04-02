@@ -10,6 +10,7 @@ import {
   CHAT_SCROLL_TO_BOTTOM_TYPE,
   type ChatAgentPresence,
   looksLikeAssistantBusy,
+  looksLikeAuditorBusy,
   looksLikeCommandFailure,
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
@@ -321,7 +322,7 @@ export function BacklogTicketView({
     }
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
-    if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
+    if (looksLikeAuditorBusy(last.content ?? "")) return "auditing";
     return "idle";
   }, [session?.messages, session?.updatedAt]);
 

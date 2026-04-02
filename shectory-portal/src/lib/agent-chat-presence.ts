@@ -18,6 +18,21 @@ export function looksLikeAssistantBusy(content: string): boolean {
   return false;
 }
 
+/**
+ * Аудитор ещё работает (промежуточное сообщение «проверяю…»).
+ * Финальные сообщения аудитора (Вердикт: ..., ошибка процесса и т.п.) → false → статус idle.
+ */
+export function looksLikeAuditorBusy(content: string): boolean {
+  const c = (content ?? "").trimStart();
+  if (!c.startsWith("🕵️ Аудитор:")) return false;
+  // Final verdict messages — auditor is done
+  if (c.startsWith("🕵️ Аудитор: Вердикт:")) return false;
+  if (c.startsWith("🕵️ Аудитор: не смог")) return false;
+  if (c.startsWith("🕵️ Аудитор: ошибка")) return false;
+  // Intermediate: "🕵️ Аудитор: проверяю…" etc.
+  return true;
+}
+
 /** Эвристика: ассистент показал exit_code != 0 → это ошибка выполнения команд. */
 export function looksLikeCommandFailure(content: string): boolean {
   const c = content ?? "";
