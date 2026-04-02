@@ -197,7 +197,8 @@ async function main() {
   if (!run) throw new Error(`Run not found: ${runId}`);
   if (!run.project?.workspacePath) throw new Error("Project workspacePath missing");
 
-  if (run.status !== "queued") return;
+  // Allow restart of a "running" run that was left by a crashed process
+  if (run.status !== "queued" && run.status !== "running") return;
 
   // Check if session was stopped before we started
   if (run.sessionId) {
@@ -206,6 +207,11 @@ async function main() {
   }
 
   await prisma.agentRun.update({ where: { id: runId }, data: { status: "running", startedAt: now() } });
+  // Reset any steps stuck in "running" from a previous crashed process back to "pending"
+  await prisma.agentRunStep.updateMany({
+    where: { runId, status: "running" },
+    data: { status: "pending", startedAt: null },
+  });
   await emit(runId, "ack", "Задание принято в очередь");
   await emit(runId, "started", "Запуск обработки");
 
