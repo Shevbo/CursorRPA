@@ -165,6 +165,7 @@ model BacklogItem {
   sprint            Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
   chats             ChatSession[]
   agentRuns         AgentRun[]
+  checkItems        BacklogCheckItem[]
 
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -174,6 +175,22 @@ model BacklogItem {
   @@index([projectId, taskType])
   @@index([projectId, ticketSeq])
   @@map("backlog_items")
+}
+
+model BacklogCheckItem {
+  id            String      @id @default(cuid())
+  backlogItemId String      @map("backlog_item_id")
+  backlogItem   BacklogItem @relation(fields: [backlogItemId], references: [id], onDelete: Cascade)
+  /// Порядок отображения (0-based)
+  orderNum      Int         @default(0) @map("order_num")
+  text          String      @db.Text
+  done          Boolean     @default(false)
+  doneAt        DateTime?   @map("done_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([backlogItemId, orderNum])
+  @@map("backlog_check_items")
 }
 
 model ProjectTicketCounter {

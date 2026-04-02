@@ -97,6 +97,14 @@ export function BacklogTicketView({
   const [ticketDetailsOpen, setTicketDetailsOpen] = useState(false);
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
   const [autoShellUntil, setAutoShellUntil] = useState<number | null>(null);
+
+  // Checklist state
+  type CheckItem = { id: string; text: string; done: boolean; orderNum: number };
+  const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
+  const [checklistOpen, setChecklistOpen] = useState(true);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+  const [checklistExtracting, setChecklistExtracting] = useState(false);
+  const [newCheckText, setNewCheckText] = useState("");
   const [clockTick, setClockTick] = useState(0);
   const [iframeChatSync, setIframeChatSync] = useState<TicketChatPostMessage | null>(null);
   const autoShellInFlight = useRef(false);
@@ -128,6 +136,70 @@ export function BacklogTicketView({
     e.preventDefault();
     setPendingChatFiles((prev) => mergePendingFiles(prev, files));
   }, []);
+
+  // Checklist API helpers
+  const loadChecklist = useCallback(async () => {
+    const r = await fetch(`/api/project/backlog/checklist?itemId=${encodeURIComponent(itemId)}`, { credentials: "include" });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && Array.isArray((j as { items?: CheckItem[] }).items)) {
+      setCheckItems((j as { items: CheckItem[] }).items);
+    }
+  }, [itemId]);
+
+  useEffect(() => { void loadChecklist(); }, [loadChecklist]);
+
+  const toggleCheckItem = useCallback(async (id: string, done: boolean) => {
+    setCheckItems((prev) => prev.map((c) => c.id === id ? { ...c, done } : c));
+    await fetch("/api/project/backlog/checklist", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, done }),
+    });
+  }, []);
+
+  const deleteCheckItem = useCallback(async (id: string) => {
+    setCheckItems((prev) => prev.filter((c) => c.id !== id));
+    await fetch(`/api/project/backlog/checklist?id=${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
+  }, []);
+
+  const addCheckItem = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    setChecklistLoading(true);
+    try {
+      const r = await fetch("/api/project/backlog/checklist", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, text: text.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && (j as { item?: CheckItem }).item) {
+        setCheckItems((prev) => [...prev, (j as { item: CheckItem }).item]);
+        setNewCheckText("");
+      }
+    } finally {
+      setChecklistLoading(false);
+    }
+  }, [itemId]);
+
+  const extractChecklistFromPrompt = useCallback(async (replace: boolean) => {
+    setChecklistExtracting(true);
+    try {
+      const r = await fetch("/api/project/backlog/checklist/extract", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, replaceExisting: replace }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && Array.isArray((j as { items?: CheckItem[] }).items)) {
+        setCheckItems((j as { items: CheckItem[] }).items);
+      }
+    } finally {
+      setChecklistExtracting(false);
+    }
+  }, [itemId]);
 
   useEffect(() => {
     if (inSprint) return;
@@ -1007,6 +1079,126 @@ export function BacklogTicketView({
         )}
 
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
+
+        {/* ── Чеклист тикета ── */}
+        <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40">
+          <button
+            type="button"
+            className="flex w-full touch-manipulation items-center justify-between gap-3 px-3 py-2.5 text-left"
+            onClick={() => setChecklistOpen((o) => !o)}
+            aria-expanded={checklistOpen}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-200">Чеклист</span>
+              {checkItems.length > 0 && (
+                <span className="text-[10px] text-slate-500">
+                  {checkItems.filter((c) => c.done).length}/{checkItems.length}
+                </span>
+              )}
+              {checkItems.length > 0 && checkItems.every((c) => c.done) && (
+                <span className="rounded-full bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">✓ готово</span>
+              )}
+            </div>
+            <span
+              className={`inline-flex size-7 shrink-0 items-center justify-center rounded border border-slate-700 text-xs text-slate-400 transition-transform duration-200 ${checklistOpen ? "rotate-180" : ""}`}
+              aria-hidden
+            >
+              ▼
+            </span>
+          </button>
+
+          {checklistOpen && (
+            <div className="border-t border-slate-800 px-3 pb-3 pt-2">
+              {/* Progress bar */}
+              {checkItems.length > 0 && (
+                <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                    style={{ width: `${Math.round((checkItems.filter((c) => c.done).length / checkItems.length) * 100)}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Items list */}
+              {checkItems.length === 0 ? (
+                <div className="py-2 text-xs text-slate-600">Нет пунктов. Добавьте вручную или извлеките из промпта.</div>
+              ) : (
+                <ul className="mb-2 space-y-0.5">
+                  {checkItems.map((c) => (
+                    <li key={c.id} className="group flex items-start gap-2 rounded px-1 py-0.5 hover:bg-slate-800/30">
+                      <button
+                        type="button"
+                        className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border text-[10px] transition-colors ${c.done ? "border-emerald-600 bg-emerald-900/40 text-emerald-300" : "border-slate-600 bg-transparent text-transparent hover:border-emerald-600"}`}
+                        onClick={() => void toggleCheckItem(c.id, !c.done)}
+                        title={c.done ? "Снять отметку" : "Отметить выполненным"}
+                      >
+                        {c.done ? "✓" : ""}
+                      </button>
+                      <span className={`flex-1 text-xs leading-relaxed ${c.done ? "text-slate-500 line-through" : "text-slate-200"}`}>
+                        {c.text}
+                      </span>
+                      <button
+                        type="button"
+                        className="hidden shrink-0 text-[10px] text-slate-600 hover:text-red-400 group-hover:block"
+                        onClick={() => void deleteCheckItem(c.id)}
+                        title="Удалить пункт"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Add new item */}
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-slate-500 focus:outline-none"
+                  placeholder="Добавить пункт…"
+                  value={newCheckText}
+                  onChange={(e) => setNewCheckText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); void addCheckItem(newCheckText); }
+                  }}
+                  disabled={checklistLoading}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                  disabled={checklistLoading || !newCheckText.trim()}
+                  onClick={() => void addCheckItem(newCheckText)}
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Extract from prompt buttons */}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className="rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 disabled:opacity-40"
+                  disabled={checklistExtracting}
+                  onClick={() => void extractChecklistFromPrompt(false)}
+                  title="Найти нумерованные шаги и маркированные пункты в тексте промпта/ТЗ и добавить их в чеклист"
+                >
+                  {checklistExtracting ? "…" : "⬇ Извлечь шаги из промпта"}
+                </button>
+                {checkItems.length > 0 && (
+                  <button
+                    type="button"
+                    className="rounded border border-red-900/60 px-2 py-1 text-[11px] text-red-400 hover:bg-red-900/20 disabled:opacity-40"
+                    disabled={checklistExtracting}
+                    onClick={() => { if (confirm("Заменить весь чеклист шагами из промпта?")) void extractChecklistFromPrompt(true); }}
+                    title="Удалить текущий чеклист и заполнить заново из промпта"
+                  >
+                    ↺ Заменить из промпта
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
     </div>
   );
 
