@@ -1,4 +1,7 @@
 import { PrismaClient } from "@prisma/client";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 import { notifyPortalUser } from "./lib/portal-notify.mjs";
@@ -6,6 +9,12 @@ import { notifyPortalUser } from "./lib/portal-notify.mjs";
 const prisma = new PrismaClient();
 
 const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "claude-4.6-sonnet-medium").trim();
+
+/** Максимум доработок аудитора подряд (без успеха) до принудительной остановки. */
+const AUDITOR_MAX_REWORKS = Number(process.env.AUDITOR_MAX_REWORKS || "3") || 3;
+
+/** Не запускать аудитора на короткие ответы (вопросы, уточнения, ожидание ответа). */
+const AUDITOR_MIN_REPLY_LEN = 120;
 
 const RU_TAIL =
   "\n\n━━ Стандарты Shectory ━━\n" +
@@ -28,6 +37,57 @@ const AGENT_WINDOW = 120;
 
 function isProcessingAssistantMsg(m) {
   return m.role === "assistant" && m.content.trimStart().startsWith("⏳");
+}
+
+/**
+ * Считает сколько подряд идущих «На доработку» от аудитора без «Успех» в хвосте.
+ */
+function countTrailingAuditReworks(msgs, maxScan = 200) {
+  let n = 0;
+  const start = Math.max(0, msgs.length - maxScan);
+  for (let i = msgs.length - 1; i >= start; i--) {
+    const m = msgs[i];
+    if (m?.role !== "assistant") continue;
+    const c = (m.content ?? "").trimStart();
+    if (c.startsWith("🕵️ Аудитор: Вердикт: Успех")) return n;
+    if (c.startsWith("🕵️ Аудитор: Вердикт: На доработку")) { n += 1; continue; }
+  }
+  return n;
+}
+
+/**
+ * Нужно ли запускать аудитора после ответа исполнителя?
+ * Не запускаем если: ответ короткий (вопрос/уточнение), агент ждёт ответа,
+ * или превышен лимит reworks.
+ */
+function shouldRunAuditor(reply, msgs) {
+  const r = String(reply || "").trim();
+  if (r.length < AUDITOR_MIN_REPLY_LEN) return false;
+  if (r.includes("[***waiting for answer***]")) return false;
+  if (/<<<SHELL_COMMAND>>>/.test(r)) return false; // команды — через /exec, там аудитор уже есть
+  const reworks = countTrailingAuditReworks(msgs);
+  if (reworks >= AUDITOR_MAX_REWORKS) return false;
+  return true;
+}
+
+/**
+ * Запускает аудитора в фоне для оценки ответа исполнителя (не shell-команды).
+ */
+async function enqueueAuditorForReply(sessionId, workspacePath, executorReply, timeoutMs) {
+  const auditorPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "agent-auditor-chat-runner.mjs"
+  );
+  const payload = Buffer.from(
+    JSON.stringify({ executorReply }),
+    "utf8"
+  ).toString("base64");
+  const child = spawn(
+    process.execPath,
+    [auditorPath, sessionId, workspacePath, payload, String(timeoutMs)],
+    { detached: true, stdio: "ignore" }
+  );
+  child.unref();
 }
 
 /**
@@ -189,6 +249,17 @@ async function main() {
   });
 
   await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+
+  // Re-fetch messages to check rework count before launching auditor
+  const freshMsgs = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    select: { role: true, content: true },
+  });
+  const freshSess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  if (!freshSess?.isStopped && shouldRunAuditor(reply, freshMsgs)) {
+    await enqueueAuditorForReply(sessionId, workspacePath, reply, timeoutMs);
+  }
 
   if (notifyUserId) {
     const meta = await prisma.chatSession.findUnique({
