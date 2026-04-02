@@ -56,7 +56,6 @@ else
 [Interface]
 Address = 10.66.0.2/24
 PrivateKey = ${PI_PRIVKEY}
-DNS = 1.1.1.1
 
 [Peer]
 # VDS Shectory

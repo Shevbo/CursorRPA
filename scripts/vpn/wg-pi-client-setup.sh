@@ -48,7 +48,6 @@ cat > "$WG_CONF" <<EOF
 [Interface]
 Address = ${PI_WG_IP}
 PrivateKey = ${PI_PRIVKEY}
-DNS = 1.1.1.1
 
 [Peer]
 # VDS Shectory
