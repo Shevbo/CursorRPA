@@ -276,13 +276,22 @@ async function main() {
   if (notifyUserId) {
     const meta = await prisma.chatSession.findUnique({
       where: { id: sessionId },
-      select: { backlogItemId: true, project: { select: { slug: true } } },
+      select: {
+        backlogItemId: true,
+        project: { select: { slug: true, name: true } },
+        backlogItem: { select: { ticketKey: true, title: true } },
+      },
     });
     if (meta?.backlogItemId && meta.project?.slug) {
+      const ticketLabel = meta.backlogItem?.ticketKey?.trim() || meta.backlogItemId.slice(0, 8);
+      const ticketTitle = meta.backlogItem?.title?.trim() || "";
+      const projectName = meta.project.name?.trim() || meta.project.slug;
       await notifyPortalUser(prisma, notifyUserId, {
         kind: "backlog_chat_idle",
-        title: "Тикет: агент в режиме ожидания",
-        body: "Фоновый ответ в чате тикета готов. Можно вернуться к переписке.",
+        title: `✅ ${projectName} · ${ticketLabel}: ответ готов`,
+        body: ticketTitle
+          ? `«${ticketTitle}» — агент ответил. Нажмите чтобы открыть чат.`
+          : "Фоновый ответ в чате тикета готов. Нажмите чтобы открыть.",
         href: `/projects/${meta.project.slug}/backlog/${meta.backlogItemId}`,
       });
     }
@@ -312,12 +321,18 @@ main()
         if (notifyUserId) {
           const meta = await prisma.chatSession.findUnique({
             where: { id: sessionId },
-            select: { backlogItemId: true, project: { select: { slug: true } } },
+            select: {
+              backlogItemId: true,
+              project: { select: { slug: true, name: true } },
+              backlogItem: { select: { ticketKey: true, title: true } },
+            },
           });
           if (meta?.backlogItemId && meta.project?.slug) {
+            const ticketLabel = meta.backlogItem?.ticketKey?.trim() || meta.backlogItemId.slice(0, 8);
+            const projectName = meta.project.name?.trim() || meta.project.slug;
             await notifyPortalUser(prisma, notifyUserId, {
               kind: "backlog_chat_failed",
-              title: "Тикет: ошибка фонового агента",
+              title: `❌ ${projectName} · ${ticketLabel}: ошибка агента`,
               body: e instanceof Error ? e.message : String(e),
               href: `/projects/${meta.project.slug}/backlog/${meta.backlogItemId}`,
             });

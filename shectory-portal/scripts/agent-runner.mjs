@@ -161,15 +161,21 @@ function parseIntro(text) {
 /**
  * @param {import("@prisma/client").PrismaClient} prisma
  * @param {string | null | undefined} notifyUserId
- * @param {{ backlogItemId?: string | null; project?: { slug?: string | null } | null }} run
+ * @param {{ backlogItemId?: string | null; project?: { slug?: string | null; name?: string | null } | null; backlogItem?: { ticketKey?: string | null; title?: string | null } | null }} run
  * @param {{ kind: string; title: string; body: string }} payload
  */
 async function notifyBacklogTicket(prisma, notifyUserId, run, payload) {
   const uid = String(notifyUserId || "").trim();
   if (!uid || !run?.backlogItemId || !run?.project?.slug) return;
+  const ticketLabel = run.backlogItem?.ticketKey?.trim() || run.backlogItemId.slice(0, 8);
+  const projectName = run.project?.name?.trim() || run.project.slug;
+  // Prepend project·ticket to title if not already there
+  const titleWithCtx = payload.title.includes(projectName)
+    ? payload.title
+    : `${projectName} · ${ticketLabel}: ${payload.title.replace(/^Тикет:\s*/i, "")}`;
   await notifyPortalUser(prisma, uid, {
     kind: payload.kind,
-    title: payload.title,
+    title: titleWithCtx,
     body: payload.body,
     href: `/projects/${run.project.slug}/backlog/${run.backlogItemId}`,
   });
@@ -182,7 +188,11 @@ async function main() {
 
   const run = await prisma.agentRun.findUnique({
     where: { id: runId },
-    include: { steps: { orderBy: { index: "asc" } }, project: true },
+    include: {
+      steps: { orderBy: { index: "asc" } },
+      project: true,
+      backlogItem: { select: { ticketKey: true, title: true } },
+    },
   });
   if (!run) throw new Error(`Run not found: ${runId}`);
   if (!run.project?.workspacePath) throw new Error("Project workspacePath missing");
@@ -404,7 +414,12 @@ main()
         await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed", finishedAt: now() } });
         const run = await prisma.agentRun.findUnique({
           where: { id: runId },
-          select: { backlogItemId: true, project: { select: { slug: true } }, kind: true },
+          select: {
+            backlogItemId: true,
+            project: { select: { slug: true, name: true } },
+            backlogItem: { select: { ticketKey: true, title: true } },
+            kind: true,
+          },
         });
         if (run?.kind === "backlog_ticket_start" || run?.kind === "engineering_prompt") {
           await notifyBacklogTicket(prisma, notifyUserIdCatch, run, {
