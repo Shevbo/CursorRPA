@@ -133,6 +133,52 @@
 - Markdown (`.md`) отображается форматированно; код/текст — в моноширинном просмотре.
 - Доступ только для авторизованных админ-сессий.
 
+## Паттерны и регламенты агентов (changelog)
+
+Раздел для фиксации ключевых решений, полезных во всех проектах. Агент обязан дополнять этот раздел при внедрении нового стандарта.
+
+### Фоновый агент-чат: heartbeat, замена placeholder, isStopped (апрель 2026)
+
+Применимо к любому проекту с фоновым агентом и чатом в портале.
+
+**Проблемы, которые решены:**
+- Статус «Я думаю» зависал сутками — `⏳ Агент обрабатывает сообщение…` оставалось в БД навсегда при краше процесса.
+- Кнопка останова не работала при `isStopped=true` (неверный `disabled`).
+- Сообщения не отправлялись после останова — `isStopped` не сбрасывался при перезапуске.
+- Не было видно, живёт ли агент во время долгого выполнения.
+
+**Решения (файлы в `shectory-portal/`):**
+
+1. **Замена placeholder вместо создания нового сообщения** (`scripts/agent-chat-runner.mjs`):
+   - Создаём `processingMsg` с `⏳`, запоминаем `id`.
+   - После завершения — `prisma.chatMessage.update({ where: { id: processingMsg.id }, data: { content: reply } })`.
+   - При краше в `.catch` — ищем последний `⏳`-message и тоже заменяем его ошибкой.
+
+2. **Heartbeat** (`scripts/agent-chat-runner.mjs`):
+   - `setInterval` каждые 15 секунд обновляет `session.updatedAt` пока агент работает.
+   - UI читает `session.updatedAt` из `reload()` и показывает время последнего пульса.
+
+3. **Сброс `isStopped` при перезапуске** (`src/app/api/project/backlog/[id]/start/route.ts`):
+   - В транзакции при нахождении существующей сессии: если `existing.isStopped` — делаем `update({ isStopped: false, stoppedAt: null })`.
+
+4. **Проверка `isStopped` в оркестраторе** (`scripts/agent-runner.mjs`):
+   - Перед стартом и между шагами: `prisma.chatSession.findUnique` → если `isStopped` → `status: 'cancelled'`, выход.
+
+5. **UI: таймаут зависшего `⏳`** (`src/components/BacklogTicketView.tsx`, `chat/page.tsx`):
+   - В `sessionDerivedPresence`: если `looksLikeAssistantBusy` и сообщение старше 10 минут → `'idle'` вместо `'thinking'`.
+   - `agentPresence`: `session.isStopped` имеет приоритет → всегда `'idle'`.
+
+6. **UI: блокировка ввода при `isStopped`**:
+   - Textarea и кнопка "Отправить" `disabled` при `session.isStopped === true`.
+   - Показывается предупреждение «Сессия остановлена — перезапустите агента».
+   - Бейджи состояния: Остановлен (красный) / Ждёт ответа (жёлтый) / Думает… (синий) + время пульса.
+
+### Cursor rule: системный промпт для всех агентов workspace (апрель 2026)
+
+Файл `.cursor/rules/shectory-core.mdc` с `alwaysApply: true` — применяется в каждой сессии Cursor в workspace `CursorRPA`. Содержит строгие правила: коммит+деплой, обновление Wikipedia, деплой только через скрипт, БД через Prisma, запрет pkill без каталога, единый каталог пользователей.
+
+Шаблон для других workspaces: скопировать `.cursor/rules/shectory-core.mdc` и адаптировать пути деплоя.
+
 ## Версия
 
 Документ живой; при изменении стандартов Shectory обновляйте этот файл и кратко отражайте суть в changelog/описании PR при необходимости.
