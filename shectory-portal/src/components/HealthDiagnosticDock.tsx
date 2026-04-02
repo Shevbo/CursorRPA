@@ -125,7 +125,7 @@ export function HealthDiagnosticDock() {
         <div className="px-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
           Диагностика · интервал опроса ~5 мин (кэш)
         </div>
-        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+        <div className="flex max-h-[38vh] flex-wrap gap-2 overflow-y-auto overscroll-y-contain sm:max-h-none sm:flex-nowrap sm:overflow-visible">
           {stripTile(
             "Hoster",
             <>

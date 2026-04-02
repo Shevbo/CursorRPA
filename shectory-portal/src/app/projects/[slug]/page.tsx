@@ -36,16 +36,19 @@ export default async function ProjectPage({ params }: { params: { slug: string }
   const assistantPromptForMeta = buildAdminAssistantPrompt(project);
 
   return (
-    <main className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden px-4 py-2">
+    <main className="mx-auto flex h-[100dvh] max-h-[100dvh] min-w-0 w-full max-w-7xl flex-col overflow-x-hidden overflow-hidden px-3 py-2 sm:px-4">
       <div className="min-h-0 max-h-[33vh] shrink-0 overflow-y-auto overscroll-contain border-b border-slate-800 pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <Link href="/" className="text-sm text-blue-400 hover:underline">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 sm:gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
+            <Link
+              href="/"
+              className="inline-flex min-h-[44px] items-center text-sm text-blue-400 hover:underline touch-manipulation"
+            >
               ← Все проекты
             </Link>
             <Link
               href={`/projects/${project.slug}/control`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              className="inline-flex min-h-[44px] items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 touch-manipulation"
             >
               Панель управления
             </Link>
@@ -53,8 +56,8 @@ export default async function ProjectPage({ params }: { params: { slug: string }
           <NotificationBell />
         </div>
 
-        <section className="mt-4 grid gap-6 lg:grid-cols-3">
-          <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/40 p-6 lg:col-span-2">
+        <section className="mt-4 grid min-w-0 gap-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-6 lg:col-span-2">
             <div className="text-xs text-slate-500">ID: {project.id}</div>
             <h1 className="text-2xl font-bold text-white">{project.name}</h1>
             <ProjectDescriptionEditor
@@ -234,13 +237,13 @@ export default async function ProjectPage({ params }: { params: { slug: string }
 
       <header className="z-20 shrink-0 border-b border-slate-800 bg-slate-950/95 py-3 shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-sm">
         <h2 className="text-lg font-semibold text-white">Панель управления (workspace)</h2>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
           {project.repoUrl && (
             <a
               href={project.repoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900"
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900 touch-manipulation"
             >
               Репозиторий
             </a>
@@ -250,7 +253,7 @@ export default async function ProjectPage({ params }: { params: { slug: string }
               href={project.uiUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900"
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900 touch-manipulation"
             >
               UI
             </a>
@@ -260,7 +263,7 @@ export default async function ProjectPage({ params }: { params: { slug: string }
               href={project.docsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900"
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900 touch-manipulation"
             >
               Документация
             </a>
@@ -269,10 +272,10 @@ export default async function ProjectPage({ params }: { params: { slug: string }
             href={`/projects/${project.slug}/assistant`}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900"
+            className="inline-flex min-h-[44px] max-w-full items-center rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 hover:bg-slate-900 touch-manipulation"
             title={assistantPromptForMeta.slice(0, 200)}
           >
-            Спросить агента (админ-команды)
+            <span className="break-words">Спросить агента (админ-команды)</span>
           </a>
           <RefreshArchitectureButton slug={project.slug} />
         </div>

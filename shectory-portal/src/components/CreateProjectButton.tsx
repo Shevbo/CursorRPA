@@ -65,7 +65,7 @@ export function CreateProjectButton({ canCreate }: Props) {
     <>
       <button
         type="button"
-        className="grid h-9 w-9 place-items-center rounded-lg border border-slate-700 bg-slate-900 text-lg font-semibold text-white hover:bg-slate-800"
+        className="grid h-11 min-h-[44px] w-11 min-w-[44px] touch-manipulation place-items-center rounded-lg border border-slate-700 bg-slate-900 text-lg font-semibold text-white hover:bg-slate-800"
         title="Добавить проект"
         onClick={() => setOpen(true)}
       >
@@ -78,39 +78,39 @@ export function CreateProjectButton({ canCreate }: Props) {
             <div className="mb-3 text-sm font-semibold text-white">Новый прикладной проект</div>
             <div className="grid gap-2">
               <input
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                className="min-h-[44px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                 placeholder="slug (например piranha-ai)"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
               />
               <input
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                className="min-h-[44px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                 placeholder="Название проекта"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
               <input
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                className="min-h-[44px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                 placeholder="repoName (например piranha-ai)"
                 value={repoName}
                 onChange={(e) => setRepoName(e.target.value)}
               />
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 <input
-                  className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  className="min-h-[44px] min-w-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                   placeholder="owner (GitHub org/user)"
                   value={owner}
                   onChange={(e) => setOwner(e.target.value)}
                 />
                 <input
-                  className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                  className="min-h-[44px] min-w-0 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                   placeholder="maintainer (опционально)"
                   value={maintainer}
                   onChange={(e) => setMaintainer(e.target.value)}
                 />
               </div>
               <select
-                className="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                className="min-h-[44px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white sm:text-sm"
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value === "public" ? "public" : "private")}
               >
@@ -121,10 +121,10 @@ export function CreateProjectButton({ canCreate }: Props) {
 
             {error && <div className="mt-3 text-sm text-red-400">{error}</div>}
 
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200"
+                className="min-h-[44px] rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 touch-manipulation"
                 onClick={() => setOpen(false)}
                 disabled={pending}
               >
@@ -132,7 +132,7 @@ export function CreateProjectButton({ canCreate }: Props) {
               </button>
               <button
                 type="button"
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-60"
+                className="min-h-[44px] rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-60 touch-manipulation"
                 disabled={pending || !slug.trim() || !name.trim() || !repoName.trim() || !owner.trim()}
                 onClick={submit}
               >
@@ -145,4 +145,3 @@ export function CreateProjectButton({ canCreate }: Props) {
     </>
   );
 }
-

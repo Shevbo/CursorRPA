@@ -34,10 +34,10 @@ export default async function ProjectsPage({
   ]);
 
   return (
-    <div className="relative min-h-screen">
-    <main className="mx-auto max-w-7xl px-4 py-6 pb-[18rem] sm:pb-[9.5rem]">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
-        <div className="flex items-center gap-3">
+    <div className="relative min-h-screen overflow-x-hidden">
+    <main className="mx-auto min-w-0 max-w-7xl overflow-x-hidden px-3 py-6 pb-[18rem] sm:px-4 sm:pb-[9.5rem]">
+      <header className="mb-8 flex min-w-0 flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
+        <div className="flex min-w-0 items-center gap-3">
           <ShectoryLogoPicker canUpload={canEditDescriptions} sizeClass="h-12 sm:h-14" />
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">Shectory</h1>
@@ -49,7 +49,7 @@ export default async function ProjectsPage({
           {canEditDescriptions && (
             <Link
               href="/projects?editCards=1"
-              className="min-h-[44px] rounded-lg border border-amber-700/70 bg-amber-900/20 px-3 py-2 text-sm text-amber-200 hover:bg-amber-900/40 sm:min-h-0 sm:py-1.5"
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-amber-700/70 bg-amber-900/20 px-3 py-2 text-sm text-amber-200 hover:bg-amber-900/40 touch-manipulation"
             >
               Обновить карточки
             </Link>
@@ -65,12 +65,12 @@ export default async function ProjectsPage({
           {categories.map((c) => (
             <div
               key={c.id}
-              className="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-sm"
+              className="min-w-0 max-w-full flex-1 basis-full break-words rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-sm sm:basis-[min(100%,20rem)] sm:flex-none"
             >
               <div className="font-medium text-slate-300">{c.name}</div>
-              <ul className="mt-2 space-y-1 text-slate-400">
+              <ul className="mt-2 space-y-1 break-words text-slate-400">
                 {c.items.map((i) => (
-                  <li key={i.id}>
+                  <li key={i.id} className="break-words">
                     <span className="text-slate-500">{i.label}:</span> {i.value}
                   </li>
                 ))}
@@ -82,11 +82,11 @@ export default async function ProjectsPage({
 
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wider text-slate-500">Проекты</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.filter((p) => p.slug !== "shectory-portal").map((p) => (
             <div
               key={p.id}
-              className="group rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 shadow-lg transition hover:border-blue-500/40 hover:shadow-blue-900/20"
+              className="group min-w-0 rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 shadow-lg transition hover:border-blue-500/40 hover:shadow-blue-900/20 sm:p-5"
             >
               <Link href={`/projects/${p.slug}`} className="block outline-none">
                 <div className="text-xs text-slate-500">#{p.id.slice(0, 8)}</div>

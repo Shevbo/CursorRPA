@@ -409,11 +409,11 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {!embedThread ? (
         <>
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
-            <span>
+          <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
+            <span className="min-w-0 break-words">
               Чат тикета · {params.slug}/{ticketLabel}
               {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
             </span>
@@ -441,7 +441,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
                 type="button"
                 disabled={loadingOlder}
                 onClick={() => void loadOlder()}
-                className="rounded border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                className="min-h-[44px] touch-manipulation rounded border border-slate-600 bg-slate-900/80 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50 sm:min-h-0 sm:py-1.5"
               >
                 {loadingOlder ? "Загрузка…" : "Ранее в переписке"}
               </button>
@@ -583,7 +583,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             <div className="flex shrink-0 flex-col items-end justify-end self-stretch">
               <button
                 type="button"
-                className="mt-auto min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 sm:min-h-0"
+                className="mt-auto min-h-[44px] touch-manipulation rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 disabled={loading || !sessionId || (!input.trim() && pendingFiles.length === 0)}
                 onClick={() => void send()}
               >

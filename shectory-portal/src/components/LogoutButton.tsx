@@ -23,7 +23,7 @@ export function LogoutButton() {
       type="button"
       disabled={loading}
       onClick={() => void logout()}
-      className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50 sm:min-h-0"
+      className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50 touch-manipulation"
     >
       {loading ? "…" : "Выйти"}
     </button>

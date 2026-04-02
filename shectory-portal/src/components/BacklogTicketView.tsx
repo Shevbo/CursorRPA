@@ -1457,7 +1457,7 @@ export function BacklogTicketView({
           />
           <button
             type="button"
-            className="pointer-events-auto absolute bottom-1.5 right-[17px] z-10 flex size-[22px] shrink-0 items-center justify-center rounded border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
+            className="pointer-events-auto absolute bottom-2 right-3 z-10 flex size-10 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30 touch-manipulation sm:bottom-1.5 sm:right-[17px] sm:size-[22px] sm:min-h-0 sm:min-w-0"
             disabled={!session?.id || session.isStopped === true}
             onClick={() => void stopOrchestrator()}
             title={session?.isStopped ? "Агент уже остановлен. Нажмите «Перезапустить агента» для возобновления." : "Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."}
@@ -1600,7 +1600,7 @@ export function BacklogTicketView({
             <div className="flex min-h-0 flex-1 gap-2">
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <textarea
-                  className="min-h-[44px] min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-base text-white disabled:opacity-60 sm:min-h-0 sm:text-sm"
+                  className="min-h-[44px] min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-base text-white disabled:opacity-60 sm:text-sm"
                   placeholder={session?.isStopped ? "Сессия остановлена — перезапустите агента" : "Сообщение агенту…"}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -1637,7 +1637,7 @@ export function BacklogTicketView({
                 </div>
                 <button
                   type="button"
-                  className="min-h-[44px] shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 sm:min-h-0"
+                  className="min-h-[44px] shrink-0 touch-manipulation rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                   disabled={
                     loadingChat || !session?.id || session.isStopped === true || (!chatInput.trim() && pendingChatFiles.length === 0)
                   }

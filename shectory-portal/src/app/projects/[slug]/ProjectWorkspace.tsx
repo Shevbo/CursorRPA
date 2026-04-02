@@ -380,7 +380,7 @@ export function ProjectWorkspace({
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`.trim()}>
-      <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-800 bg-slate-950 py-2 scrollbar-none sm:flex-wrap">
+      <div className="flex shrink-0 gap-2 overflow-x-auto overscroll-x-contain border-b border-slate-800 bg-slate-950 py-2 [-webkit-overflow-scrolling:touch] scrollbar-none sm:flex-wrap">
         {(["chat", "files", "backlog", "tests", "deploy", "bot", "terminal"] as const).map((t) => (
           <button
             key={t}
@@ -392,7 +392,7 @@ export function ProjectWorkspace({
               if (t === "deploy") void loadDeploy();
               if (t === "bot") void loadBotStatus();
             }}
-            className={`shrink-0 rounded px-4 py-2 text-sm font-medium ${
+            className={`shrink-0 touch-manipulation rounded px-4 py-2 text-sm font-medium min-h-[44px] sm:min-h-0 ${
               tab === t ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -418,7 +418,7 @@ export function ProjectWorkspace({
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row lg:gap-3">
             <div className="w-full shrink-0 lg:w-48">
               <div className="text-xs text-slate-500">Сессии</div>
-              <ul className="mt-1 flex max-h-28 flex-row gap-1 overflow-x-auto overflow-y-hidden lg:max-h-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:space-y-1">
+              <ul className="mt-1 flex max-h-28 flex-row gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] lg:max-h-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:space-y-1">
                 {sessions.map((s) => (
                   <li key={s.id}>
                     <button
@@ -427,7 +427,7 @@ export function ProjectWorkspace({
                         setActiveId(s.id);
                         setChatVisibleCount(CHAT_INITIAL_VISIBLE);
                       }}
-                      className={`w-full shrink-0 rounded px-2 py-1 text-left text-sm lg:w-full ${
+                      className={`w-full shrink-0 touch-manipulation rounded px-2 py-2 text-left text-sm min-h-[44px] lg:min-h-0 lg:w-full lg:py-1 ${
                         s.id === activeId ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
                       }`}
                     >
@@ -444,7 +444,7 @@ export function ProjectWorkspace({
                     <button
                       type="button"
                       onClick={loadEarlierChatMessages}
-                      className="rounded-full border border-slate-600 bg-slate-900/95 px-4 py-1.5 text-xs text-blue-200 shadow-md hover:bg-slate-800"
+                      className="min-h-[44px] touch-manipulation rounded-full border border-slate-600 bg-slate-900/95 px-4 py-2 text-xs text-blue-200 shadow-md hover:bg-slate-800 sm:min-h-0 sm:py-1.5"
                     >
                       Найти более ранние сообщения
                     </button>
@@ -478,7 +478,7 @@ export function ProjectWorkspace({
                       <pre className="whitespace-pre-wrap text-xs text-amber-100">{cmd}</pre>
                       <button
                         type="button"
-                        className="mt-2 rounded bg-amber-600 px-3 py-1 text-xs text-white disabled:opacity-60"
+                        className="mt-2 min-h-[44px] touch-manipulation rounded bg-amber-600 px-3 py-2 text-xs text-white disabled:opacity-60 sm:min-h-0 sm:py-1"
                         disabled={cmdRunning}
                         onClick={() => void execCommand(cmd)}
                       >
@@ -488,14 +488,14 @@ export function ProjectWorkspace({
                   ))}
                   <div className="flex gap-2">
                     <input
-                      className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                      className="min-h-[44px] min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
                       placeholder="Или введите команду вручную…"
                       value={cmdInput}
                       onChange={(e) => setCmdInput(e.target.value)}
                     />
                     <button
                       type="button"
-                      className="rounded bg-amber-600 px-3 py-2 text-sm text-white disabled:opacity-60"
+                      className="min-h-[44px] shrink-0 touch-manipulation rounded bg-amber-600 px-3 py-2 text-sm text-white disabled:opacity-60 sm:min-h-0"
                       disabled={cmdRunning || !cmdInput.trim()}
                       onClick={() => void execCommand(cmdInput)}
                     >
@@ -508,7 +508,7 @@ export function ProjectWorkspace({
               <div className="shrink-0 border-t border-slate-800 bg-slate-950/80 p-2">
                 <div className="flex gap-2">
                   <input
-                    className="min-h-[44px] flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
+                    className="min-h-[44px] min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:text-sm"
                     placeholder="Сообщение агенту Cursor (выполняется agent CLI на сервере)…"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -518,7 +518,7 @@ export function ProjectWorkspace({
                     type="button"
                     disabled={loading}
                     onClick={() => void send()}
-                    className="min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 sm:min-h-0"
+                    className="min-h-[44px] shrink-0 touch-manipulation rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                   >
                     {loading ? "…" : "Отправить"}
                   </button>

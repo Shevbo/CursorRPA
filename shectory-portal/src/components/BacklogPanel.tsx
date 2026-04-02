@@ -195,8 +195,8 @@ export function BacklogPanel({
         </p>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-900/30 p-3 text-sm [&_select]:min-h-[44px] [&_input]:min-h-[44px] sm:[&_select]:min-h-0 sm:[&_input]:min-h-0">
-        <label className="flex flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-900/30 p-3 text-sm [&_select]:min-h-[44px] [&_input]:min-h-[44px] [&_input]:text-base sm:[&_input]:text-sm">
+        <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto">
           <span className="text-xs text-slate-500">Статус</span>
           <select
             className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200"
@@ -214,10 +214,10 @@ export function BacklogPanel({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto">
           <span className="text-xs text-slate-500">Спринт #</span>
           <input
-            className="w-24 rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200"
+            className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200 sm:w-24"
             placeholder="—"
             value={sprintFilter}
             onChange={(e) => {
@@ -226,10 +226,10 @@ export function BacklogPanel({
             }}
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto">
           <span className="text-xs text-slate-500">taskType</span>
           <input
-            className="w-28 rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200"
+            className="w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200 sm:w-28"
             value={taskTypeFilter}
             onChange={(e) => {
               setPage(1);
@@ -237,7 +237,7 @@ export function BacklogPanel({
             }}
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto">
           <span className="text-xs text-slate-500">Сортировка</span>
           <select
             className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200"
@@ -252,7 +252,7 @@ export function BacklogPanel({
             <option value="orderNum">orderNum</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 w-full flex-col gap-1 sm:w-auto">
           <span className="text-xs text-slate-500">Порядок</span>
           <select
             className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-200"
@@ -266,7 +266,7 @@ export function BacklogPanel({
         <button
           type="button"
           onClick={() => void load()}
-          className="min-h-[44px] rounded border border-slate-600 px-3 py-1.5 text-slate-300 hover:bg-slate-800 sm:min-h-0"
+          className="inline-flex min-h-[44px] items-center touch-manipulation rounded border border-slate-600 px-3 py-1.5 text-slate-300 hover:bg-slate-800"
         >
           Обновить
         </button>
@@ -277,22 +277,22 @@ export function BacklogPanel({
 
       <div className="rounded-lg border border-slate-800 bg-black/20 p-4">
         <h3 className="mb-3 text-sm font-medium text-slate-300">Новая задача</h3>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <input
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white sm:col-span-2"
+            className="min-h-[44px] rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:col-span-2 sm:min-h-0 sm:text-sm"
             placeholder="Заголовок *"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
           />
           <input
             type="number"
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+            className="min-h-[44px] rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
             placeholder="Спринт #"
             value={newSprint}
             onChange={(e) => setNewSprint(e.target.value)}
           />
           <select
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+            className="min-h-[44px] rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
             value={newSprintStatus}
             onChange={(e) => setNewSprintStatus(e.target.value)}
           >
@@ -303,7 +303,7 @@ export function BacklogPanel({
             ))}
           </select>
           <select
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+            className="min-h-[44px] rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
             value={newPriority}
             onChange={(e) => setNewPriority(parseInt(e.target.value, 10))}
           >
@@ -315,14 +315,14 @@ export function BacklogPanel({
           </select>
         </div>
         <textarea
-          className="mt-2 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+          className="mt-2 min-h-[5rem] w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:text-sm"
           placeholder="Описание (необязательно)"
           rows={2}
           value={newDescription}
           onChange={(e) => setNewDescription(e.target.value)}
         />
         <textarea
-          className="mt-2 w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+          className="mt-2 min-h-[6rem] w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:text-sm"
           placeholder="Промпт / ТЗ для агента (необязательно)"
           rows={3}
           value={newPrompt}
@@ -330,14 +330,14 @@ export function BacklogPanel({
         />
         <button
           type="button"
-          className="mt-2 min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm text-white sm:min-h-0"
+          className="mt-2 inline-flex min-h-[44px] items-center touch-manipulation rounded bg-blue-600 px-4 py-2 text-sm text-white"
           onClick={() => void addItem()}
         >
           Добавить в бэклог
         </button>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-slate-800 bg-black/20">
+      <div className="-mx-1 max-w-full overflow-x-auto overflow-y-visible overscroll-x-contain rounded-lg border border-slate-800 bg-black/20 px-1 sm:mx-0 sm:px-0">
         <table className="w-full min-w-[880px] text-left text-sm">
           <thead className="sticky top-0 bg-slate-950/90 text-xs uppercase tracking-wide text-slate-500">
             <tr className="border-b border-slate-800">
@@ -371,7 +371,7 @@ export function BacklogPanel({
                     </div>
                     <Link
                       href={`/projects/${projectSlug}/backlog/${b.id}`}
-                      className="shrink-0 rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                      className="inline-flex size-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-200 touch-manipulation"
                       title="Открыть тикет и редактировать"
                       aria-label="Редактировать тикет"
                     >
@@ -409,7 +409,7 @@ export function BacklogPanel({
                 <td className="whitespace-nowrap px-3 py-2 text-right text-xs">
                   <button
                     type="button"
-                    className="text-red-400 hover:underline"
+                    className="min-h-[44px] touch-manipulation px-2 text-red-400 hover:underline sm:min-h-0 sm:px-0"
                     onClick={() => void remove(b.id)}
                   >
                     Удалить
@@ -429,11 +429,11 @@ export function BacklogPanel({
       </div>
 
       {total > limit && (
-        <div className="flex items-center gap-3 text-sm text-slate-400">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
           <button
             type="button"
             disabled={page <= 1}
-            className="rounded border border-slate-600 px-3 py-1 disabled:opacity-40"
+            className="min-h-[44px] touch-manipulation rounded border border-slate-600 px-3 py-2 disabled:opacity-40 sm:min-h-0 sm:py-1"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             Назад
@@ -444,7 +444,7 @@ export function BacklogPanel({
           <button
             type="button"
             disabled={page >= Math.ceil(total / limit)}
-            className="rounded border border-slate-600 px-3 py-1 disabled:opacity-40"
+            className="min-h-[44px] touch-manipulation rounded border border-slate-600 px-3 py-2 disabled:opacity-40 sm:min-h-0 sm:py-1"
             onClick={() => setPage((p) => p + 1)}
           >
             Вперёд
