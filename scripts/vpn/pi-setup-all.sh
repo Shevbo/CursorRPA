@@ -4,9 +4,10 @@
 #   2. Install autossh reverse tunnel (TCP/443 fallback)
 #   3. Install pi-pulse systemd timer (health push to portal)
 #
-# Run as root on Pi:
-#   curl -fsSL https://raw.githubusercontent.com/... | sudo bash
-# OR copy this file to Pi and run:
+# Run as root on Pi (no repo clone needed):
+#   curl -fsSL https://raw.githubusercontent.com/Shevbo/CursorRPA/main/scripts/vpn/pi-setup-all.sh | sudo bash
+# OR download and run:
+#   curl -fsSL https://raw.githubusercontent.com/Shevbo/CursorRPA/main/scripts/vpn/pi-setup-all.sh -o pi-setup-all.sh
 #   sudo bash pi-setup-all.sh
 #
 # Required env vars (or edit defaults below):
@@ -26,11 +27,11 @@ VDS_SSH_HOST="${VDS_SSH_HOST:-shectory.ru}"
 VDS_SSH_USER="${VDS_SSH_USER:-shectory}"
 VDS_SSH_PORT="${VDS_SSH_PORT:-443}"
 PI_PULSE_URL="${PI_PULSE_URL:-https://shectory.ru/api/health/pi/pulse}"
-PI_PULSE_TOKEN="${PI_PULSE_TOKEN:-}"
+PI_PULSE_TOKEN="${PI_PULSE_TOKEN:-36ea9a230155b1a9c20e854ba197eda00c639c22207b1d77}"
 PI_PULSE_DEVICE_KEY="${PI_PULSE_DEVICE_KEY:-default}"
 
-REPO_DIR="${REPO_DIR:-/home/shevbo/workspaces/CursorRPA}"
-SCRIPTS_DIR="${REPO_DIR}/scripts"
+# pulse.py install dir (no repo needed)
+PULSE_INSTALL_DIR="/opt/shectory-pi-pulse"
 
 echo "================================================================"
 echo " Shectory Pi Setup: WireGuard + autossh + pi-pulse"
@@ -155,38 +156,67 @@ echo "  Then: systemctl start autossh-pi-reverse-tunnel.service"
 echo ""
 echo "=== [3/3] pi-pulse health timer ==="
 
-PULSE_SCRIPT_DIR="${SCRIPTS_DIR}/pi-pulse"
-if [[ ! -d "$PULSE_SCRIPT_DIR" ]]; then
-  echo "WARNING: $PULSE_SCRIPT_DIR not found. Skipping pi-pulse setup."
-  echo "  Make sure the repo is cloned to $REPO_DIR"
-else
-  # Write env file if token provided
-  if [[ -n "$PI_PULSE_TOKEN" ]]; then
-    cat > /etc/shectory/pi-pulse.env <<EOF
+mkdir -p "$PULSE_INSTALL_DIR"
+
+# Download pulse.py from GitHub (no repo clone needed)
+PULSE_PY_URL="https://raw.githubusercontent.com/Shevbo/CursorRPA/main/scripts/pi-pulse/pulse.py"
+echo "Downloading pulse.py from GitHub..."
+curl -fsSL "$PULSE_PY_URL" -o "${PULSE_INSTALL_DIR}/pulse.py"
+chmod +x "${PULSE_INSTALL_DIR}/pulse.py"
+echo "pulse.py installed to ${PULSE_INSTALL_DIR}/pulse.py"
+
+# Write env file
+mkdir -p /etc/shectory
+cat > /etc/shectory/pi-pulse.env <<EOF
 PI_PULSE_URL=${PI_PULSE_URL}
 PI_PULSE_TOKEN=${PI_PULSE_TOKEN}
 PI_PULSE_DEVICE_KEY=${PI_PULSE_DEVICE_KEY}
 PI_SYSLOG_PORT=4444
 PI_PINGMASTER_PORT=4555
 EOF
-    chmod 600 /etc/shectory/pi-pulse.env
-    echo "pi-pulse env written to /etc/shectory/pi-pulse.env"
-  else
-    echo "WARNING: PI_PULSE_TOKEN not set. Set it and create /etc/shectory/pi-pulse.env manually."
-  fi
+chmod 600 /etc/shectory/pi-pulse.env
+echo "pi-pulse env written to /etc/shectory/pi-pulse.env"
 
-  # Install systemd units
-  cp "${PULSE_SCRIPT_DIR}/shectory-pi-pulse.service" /etc/systemd/system/
-  cp "${PULSE_SCRIPT_DIR}/shectory-pi-pulse.timer" /etc/systemd/system/
+# Install systemd service
+cat > /etc/systemd/system/shectory-pi-pulse.service <<EOF
+[Unit]
+Description=Shectory Pi health pulse to portal (HTTPS)
+After=network-online.target
+Wants=network-online.target
 
-  # Update service to use /etc/shectory/pi-pulse.env
-  sed -i 's|EnvironmentFile=.*|EnvironmentFile=/etc/shectory/pi-pulse.env|' \
-    /etc/systemd/system/shectory-pi-pulse.service
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/shectory/pi-pulse.env
+ExecStart=/usr/bin/python3 ${PULSE_INSTALL_DIR}/pulse.py
+StandardOutput=journal
+StandardError=journal
 
-  systemctl daemon-reload
-  systemctl enable --now shectory-pi-pulse.timer
-  echo "pi-pulse timer enabled"
-fi
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Install systemd timer (every 5 minutes)
+cat > /etc/systemd/system/shectory-pi-pulse.timer <<'TIMEREOF'
+[Unit]
+Description=Run Pi health pulse every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=shectory-pi-pulse.service
+
+[Install]
+WantedBy=timers.target
+TIMEREOF
+
+systemctl daemon-reload
+systemctl enable --now shectory-pi-pulse.timer
+echo "pi-pulse timer enabled"
+
+# Run once immediately to verify
+echo "Running pulse once to test..."
+systemctl start shectory-pi-pulse.service && echo "✅ Pulse sent successfully" \
+  || echo "⚠️  Pulse failed - check: journalctl -u shectory-pi-pulse.service"
 
 echo ""
 echo "================================================================"
