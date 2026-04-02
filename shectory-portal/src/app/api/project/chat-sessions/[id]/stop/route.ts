@@ -25,7 +25,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
   await prisma.chatSession.update({
     where: { id: params.id },
-    data: { isStopped: true, stoppedAt: new Date(), updatedAt: new Date() },
+    data: { isStopped: true, stoppedAt: new Date(), updatedAt: new Date(), processingMsgId: null },
   });
 
   const pid = await readAgentPidFile(params.id);

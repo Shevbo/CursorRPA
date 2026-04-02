@@ -104,6 +104,8 @@ model ChatSession {
   title     String
   isStopped Boolean       @default(false) @map("is_stopped")
   stoppedAt DateTime?     @map("stopped_at")
+  /// ID сообщения-плейсхолдера ⏳, пока агент занят. null = агент свободен.
+  processingMsgId String? @map("processing_msg_id")
   messages  ChatMessage[]
   agentRuns AgentRun[]
   createdAt DateTime      @default(now()) @map("created_at")

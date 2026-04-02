@@ -18,6 +18,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       projectId: true,
       title: true,
       backlogItemId: true,
+      isStopped: true,
+      processingMsgId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -60,10 +62,29 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const oldestLoadedCreatedAt = messagesAsc[0]?.createdAt?.toISOString() ?? null;
 
+  // Count queued messages: user messages after the last real assistant reply
+  let queuedCount = 0;
+  if (session.processingMsgId && !session.isStopped) {
+    const allMsgs = await prisma.chatMessage.findMany({
+      where: { sessionId: params.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, role: true, content: true },
+    });
+    let lastAssistantIdx = -1;
+    const pendingUserMsgs: { idx: number; id: string }[] = [];
+    for (let i = 0; i < allMsgs.length; i++) {
+      const m = allMsgs[i];
+      if (m.role === "assistant" && !m.content.trimStart().startsWith("⏳")) lastAssistantIdx = i;
+      if (m.role === "user" && m.id !== session.processingMsgId) pendingUserMsgs.push({ idx: i, id: m.id });
+    }
+    queuedCount = pendingUserMsgs.filter((u) => u.idx > lastAssistantIdx).length;
+  }
+
   return NextResponse.json({
     ok: true,
     session: { ...session, messages: messagesAsc },
     hasMoreOlder,
     oldestLoadedCreatedAt,
+    queuedCount,
   });
 }

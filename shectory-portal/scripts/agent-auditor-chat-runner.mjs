@@ -12,6 +12,61 @@ import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 import { applyStepDoneFromReply } from "./lib/checklist.mjs";
 
+function isProcessingMsg(m) {
+  return m.role === "assistant" && m.content.trimStart().startsWith("⏳");
+}
+
+/**
+ * Find next pending user message (after the last real assistant reply).
+ * Returns msgId or null.
+ */
+async function findNextQueuedMsgId(prisma, sessionId, currentMsgId) {
+  const msgs = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true },
+  });
+  let lastAssistantIdx = -1;
+  const pendingUserMsgs = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.role === "assistant" && !isProcessingMsg(m)) lastAssistantIdx = i;
+    if (m.role === "user" && m.id !== currentMsgId) pendingUserMsgs.push({ idx: i, id: m.id });
+  }
+  const queued = pendingUserMsgs.filter((u) => u.idx > lastAssistantIdx);
+  return queued.length > 0 ? queued[0].id : null;
+}
+
+/**
+ * After auditor finishes, drain the queue: spawn runner for next pending message if any.
+ * Also releases the processingMsgId lock.
+ */
+async function drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs, notifyUserId, currentMsgId) {
+  const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  if (sess?.isStopped) {
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } });
+    return;
+  }
+  const nextMsgId = await findNextQueuedMsgId(prisma, sessionId, currentMsgId);
+  if (nextMsgId) {
+    const claimed = await prisma.chatSession.updateMany({
+      where: { id: sessionId, isStopped: false },
+      data: { processingMsgId: nextMsgId },
+    });
+    if (claimed.count > 0) {
+      const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "agent-chat-runner.mjs");
+      const child = spawn(
+        process.execPath,
+        [runnerPath, sessionId, workspacePath, `msg:${nextMsgId}`, String(timeoutMs), notifyUserId].filter(Boolean),
+        { detached: true, stdio: "ignore" }
+      );
+      child.unref();
+      return;
+    }
+  }
+  await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } });
+}
+
 const prisma = new PrismaClient();
 
 const AUDITOR_MODEL_ID = (process.env.SHECTORY_AUDITOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
@@ -59,9 +114,16 @@ async function main() {
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
   const payload = safeJsonParse(Buffer.from(payloadB64, "base64").toString("utf8")) || {};
   const executorReply = String(payload.executorReply || "").trim();
+  const notifyUserId = String(payload.notifyUserId || "").trim();
 
-  const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  const sess = await prisma.chatSession.findUnique({
+    where: { id: sessionId },
+    select: { isStopped: true, processingMsgId: true },
+  });
   if (sess?.isStopped) return;
+
+  // The message that triggered this audit cycle (for queue drain)
+  const currentMsgId = sess?.processingMsgId || null;
 
   const allMsgs = await prisma.chatMessage.findMany({
     where: { sessionId },
@@ -70,7 +132,10 @@ async function main() {
   });
 
   const trailingReworks = countTrailingAuditReworks(allMsgs);
-  if (trailingReworks >= MAX_REWORKS) return;
+  if (trailingReworks >= MAX_REWORKS) {
+    await drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs, notifyUserId, currentMsgId);
+    return;
+  }
 
   const userTask = pickLastUserTask(allMsgs);
 
@@ -122,6 +187,7 @@ async function main() {
       },
     });
     await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    await drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs, notifyUserId, currentMsgId);
     return;
   }
 
@@ -143,12 +209,16 @@ async function main() {
       },
     });
     await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    await drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs, notifyUserId, currentMsgId);
     return;
   }
 
   // rework
   const freshSess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
-  if (freshSess?.isStopped) return;
+  if (freshSess?.isStopped) {
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } });
+    return;
+  }
 
   const currentReworks = countTrailingAuditReworks(allMsgs) + 1;
   if (currentReworks >= MAX_REWORKS) {
@@ -165,6 +235,7 @@ async function main() {
       },
     });
     await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    await drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs, notifyUserId, currentMsgId);
     return;
   }
 
@@ -186,7 +257,8 @@ async function main() {
     data: { sessionId, role: "user", content: auditToExecutor },
   });
 
-  // Re-launch executor with auditor's correction
+  // Re-launch executor with auditor's correction.
+  // Keep processingMsgId set — executor owns the lock and will drain queue after its reply.
   const runnerPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "agent-chat-runner.mjs"
@@ -194,7 +266,7 @@ async function main() {
   const promptB64 = Buffer.from(auditToExecutor, "utf8").toString("base64");
   const child = spawn(
     process.execPath,
-    [runnerPath, sessionId, workspacePath, promptB64, String(timeoutMs)],
+    [runnerPath, sessionId, workspacePath, promptB64, String(timeoutMs), notifyUserId].filter(Boolean),
     { detached: true, stdio: "ignore" }
   );
   child.unref();

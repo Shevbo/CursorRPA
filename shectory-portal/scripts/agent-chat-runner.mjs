@@ -77,14 +77,15 @@ function shouldRunAuditor(reply, msgs) {
 
 /**
  * Запускает аудитора в фоне для оценки ответа исполнителя (не shell-команды).
+ * notifyUserId передаётся аудитору, чтобы после вердикта он мог дренировать очередь.
  */
-async function enqueueAuditorForReply(sessionId, workspacePath, executorReply, timeoutMs) {
+async function enqueueAuditorForReply(sessionId, workspacePath, executorReply, timeoutMs, notifyUserId) {
   const auditorPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "agent-auditor-chat-runner.mjs"
   );
   const payload = Buffer.from(
-    JSON.stringify({ executorReply }),
+    JSON.stringify({ executorReply, notifyUserId: notifyUserId || "" }),
     "utf8"
   ).toString("base64");
   const child = spawn(
@@ -142,6 +143,37 @@ function augmentUserContent(content, attachmentsJson) {
   return base + block;
 }
 
+/**
+ * Find the next unprocessed user message in the queue:
+ * a user message that has no subsequent assistant reply (excluding ⏳ placeholders).
+ */
+async function findNextQueuedMsgId(sessionId, currentMsgId) {
+  // Get all messages ordered by creation time
+  const msgs = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true },
+  });
+
+  // Find user messages that don't have an assistant reply after them
+  // (excluding the current message we just processed)
+  let lastAssistantIdx = -1;
+  const pendingUserMsgs = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.role === "assistant" && !isProcessingAssistantMsg(m)) {
+      lastAssistantIdx = i;
+    }
+    if (m.role === "user" && m.id !== currentMsgId) {
+      pendingUserMsgs.push({ idx: i, id: m.id });
+    }
+  }
+
+  // User messages that come after the last real assistant reply are "pending"
+  const queued = pendingUserMsgs.filter((u) => u.idx > lastAssistantIdx);
+  return queued.length > 0 ? queued[0].id : null;
+}
+
 async function main() {
   const [sessionId, workspacePath, payloadArg, timeoutStr, notifyUserIdRaw] = process.argv.slice(2);
   if (!sessionId || !workspacePath || !payloadArg) {
@@ -152,16 +184,46 @@ async function main() {
 
   const sess = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { isStopped: true, backlogItemId: true },
+    select: { isStopped: true, backlogItemId: true, processingMsgId: true },
   });
   if (sess?.isStopped) return;
 
-  let prompt = "";
+  // Determine current msgId from payload
   const payload = String(payloadArg || "").trim();
-  if (payload.startsWith("msg:")) {
-    const msgId = payload.slice("msg:".length).trim();
+  const currentMsgId = payload.startsWith("msg:") ? payload.slice("msg:".length).trim() : null;
+
+  // Lock management:
+  // - If currentMsgId is set (normal user message): claim the lock or verify we own it.
+  // - If currentMsgId is null (auditor rework path, base64 payload): session already holds
+  //   the lock from the original message — just verify it's still set (not released).
+  if (currentMsgId) {
+    if (sess?.processingMsgId && sess.processingMsgId !== currentMsgId) {
+      // Another runner owns the lock — exit to avoid parallel execution
+      return;
+    }
+    if (!sess?.processingMsgId) {
+      // Lock was already claimed by route.ts via updateMany — nothing to do here.
+      // But if somehow it's null (e.g. race), try to claim it.
+      const claimed = await prisma.chatSession.updateMany({
+        where: { id: sessionId, processingMsgId: null },
+        data: { processingMsgId: currentMsgId },
+      });
+      if (claimed.count === 0) {
+        return; // Someone else claimed it
+      }
+    }
+  } else {
+    // Auditor rework path: processingMsgId should still be set from the original message.
+    // If it's been cleared (session stopped, etc.) — exit.
+    if (!sess?.processingMsgId) {
+      return;
+    }
+  }
+
+  let prompt = "";
+  if (currentMsgId) {
     const m = await prisma.chatMessage.findFirst({
-      where: { id: msgId, sessionId, role: "user" },
+      where: { id: currentMsgId, sessionId, role: "user" },
       select: { content: true, attachmentsJson: true },
     });
     prompt = augmentUserContent(m?.content, m?.attachmentsJson);
@@ -179,10 +241,10 @@ async function main() {
           "### Ошибка доставки сообщения агенту\n\n" +
           "Текст user-сообщения для исполнителя оказался пустым (internal). " +
           "Автозапуск остановлен, чтобы избежать ложных ответов и зацикливания.\n\n" +
-          `payload=${payload.slice(0, 200)}\n`,
+          `payload=${payloadArg?.slice(0, 200)}\n`,
       },
     });
-    await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date(), processingMsgId: null } });
     return;
   }
 
@@ -309,8 +371,38 @@ async function main() {
   });
   const freshSess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
   if (!freshSess?.isStopped && shouldRunAuditor(reply, freshMsgs)) {
-    await enqueueAuditorForReply(sessionId, workspacePath, reply, timeoutMs);
+    // Auditor will handle queue drain after its verdict
+    await enqueueAuditorForReply(sessionId, workspacePath, reply, timeoutMs, notifyUserId);
+    // Clear the lock — auditor re-launches executor if needed, which will drain the queue
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } });
+    return;
   }
+
+  // No auditor — drain the queue: find next pending user message
+  // Use the original processingMsgId (may differ from currentMsgId on rework path)
+  const lockMsgId = currentMsgId || sess?.processingMsgId || null;
+  const nextMsgId = await findNextQueuedMsgId(sessionId, lockMsgId);
+  if (nextMsgId && !freshSess?.isStopped) {
+    // Claim the next message atomically
+    const claimed = await prisma.chatSession.updateMany({
+      where: { id: sessionId, isStopped: false },
+      data: { processingMsgId: nextMsgId },
+    });
+    if (claimed.count > 0) {
+      // Spawn new runner for the next queued message
+      const runnerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "agent-chat-runner.mjs");
+      const child = spawn(
+        process.execPath,
+        [runnerPath, sessionId, workspacePath, `msg:${nextMsgId}`, String(timeoutMs), notifyUserId].filter(Boolean),
+        { detached: true, stdio: "ignore" }
+      );
+      child.unref();
+      return; // new runner owns the lock
+    }
+  }
+
+  // No more queued messages — release the lock
+  await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } });
 
   if (notifyUserId) {
     const meta = await prisma.chatSession.findUnique({
@@ -357,6 +449,8 @@ main()
             data: { sessionId, role: "assistant", content: errContent },
           });
         }
+        // Release the lock on error so queue can be drained
+        await prisma.chatSession.update({ where: { id: sessionId }, data: { processingMsgId: null } }).catch(() => {});
         if (notifyUserId) {
           const meta = await prisma.chatSession.findUnique({
             where: { id: sessionId },

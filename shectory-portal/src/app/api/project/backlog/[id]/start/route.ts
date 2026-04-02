@@ -53,7 +53,7 @@ export async function POST(req: Request, { params }: Ctx) {
       if (existing.isStopped) {
         const updated = await tx.chatSession.update({
           where: { id: existing.id },
-          data: { isStopped: false, stoppedAt: null },
+          data: { isStopped: false, stoppedAt: null, processingMsgId: null },
           include: { messages: { orderBy: { createdAt: "asc" } } },
         });
         return { session: updated, createdNow: false };

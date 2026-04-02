@@ -27,7 +27,7 @@ import {
 import { CHAT_ATTACHMENT_MAX_FILES } from "@/lib/chat-attachments";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
-type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
+type SessionWithMessages = ChatSession & { messages: ChatMessage[]; processingMsgId?: string | null };
 type ItemWithSprint = BacklogItem & { sprint?: Sprint | null };
 
 type RunWithSteps = AgentRun & { steps: AgentRunStep[] };
@@ -106,6 +106,7 @@ export function BacklogTicketView({
   const [checklistExtracting, setChecklistExtracting] = useState(false);
   const [newCheckText, setNewCheckText] = useState("");
   const [clockTick, setClockTick] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(0);
   const [iframeChatSync, setIframeChatSync] = useState<TicketChatPostMessage | null>(null);
   const autoShellInFlight = useRef(false);
   /** Не крутить авто-ОК в цикл при ошибке одной и той же команды. */
@@ -207,6 +208,21 @@ export function BacklogTicketView({
     const t = setInterval(() => void reload(), 3000);
     return () => clearInterval(t);
   }, [inSprint, session?.id, reload]);
+
+  // Poll queuedCount from session API while agent is busy
+  useEffect(() => {
+    if (!session?.id || !session.processingMsgId) { setQueuedCount(0); return; }
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/project/chat-sessions/${encodeURIComponent(session.id)}`, { credentials: "include" });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) setQueuedCount((j as { queuedCount?: number }).queuedCount ?? 0);
+      } catch { /* ignore */ }
+    };
+    void poll();
+    const t = setInterval(() => void poll(), 5000);
+    return () => clearInterval(t);
+  }, [session?.id, session?.processingMsgId]);
 
   const runProgress = useMemo(() => {
     const steps = run?.steps ?? [];
@@ -1239,6 +1255,15 @@ export function BacklogTicketView({
           {session?.updatedAt && agentPresence === "thinking" && !session.isStopped ? (
             <span className="text-[10px] text-slate-500" title="Последний пульс от агента">
               пульс: {new Date(session.updatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+          ) : null}
+          {queuedCount > 0 && agentPresence === "thinking" ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-violet-700/50 bg-violet-950/50 px-2 py-0.5 text-[10px] text-violet-200"
+              title={`${queuedCount} сообщений ожидают в очереди — агент обработает их последовательно`}
+            >
+              <span className="size-1 rounded-full bg-violet-400" aria-hidden />
+              очередь: {queuedCount}
             </span>
           ) : null}
           <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500">

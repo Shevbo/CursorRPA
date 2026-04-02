@@ -54,7 +54,7 @@ async function writeSessionAttachments(
   return out;
 }
 
-async function enqueueAgentChat(
+function spawnAgentChat(
   project: Project,
   sessionId: string,
   userMsgId: string,
@@ -67,6 +67,32 @@ async function enqueueAgentChat(
   if (nuid) args.push(nuid);
   const child = spawn(process.execPath, args, { detached: true, stdio: "ignore" });
   child.unref();
+}
+
+/**
+ * Enqueue a chat message for the agent.
+ * If the agent is currently busy (processingMsgId is set), the message is saved
+ * to the DB but the runner is NOT spawned — the runner will pick it up from the
+ * queue after it finishes the current message.
+ * Returns whether the runner was spawned immediately.
+ */
+async function enqueueAgentChat(
+  project: Project,
+  sessionId: string,
+  userMsgId: string,
+  opts?: { notifyUserId?: string | null }
+): Promise<{ spawned: boolean }> {
+  // Atomically claim the session if it's free (processingMsgId IS NULL → set it)
+  const updated = await prisma.chatSession.updateMany({
+    where: { id: sessionId, processingMsgId: null, isStopped: false },
+    data: { processingMsgId: userMsgId },
+  });
+  if (updated.count === 0) {
+    // Agent is busy — message is already saved in DB, runner will pick it up
+    return { spawned: false };
+  }
+  spawnAgentChat(project, sessionId, userMsgId, opts);
+  return { spawned: true };
 }
 
 type ParsedFile = { name: string; data: Buffer };
@@ -181,7 +207,7 @@ export async function POST(req: Request) {
   }
 
   const notifyUserId = (await portalUserIdFromRequest(req)) ?? undefined;
-  await enqueueAgentChat(project, sessionId, userMsg.id, { notifyUserId });
+  const { spawned } = await enqueueAgentChat(project, sessionId, userMsg.id, { notifyUserId });
 
   const userMsgOut = { ...userMsg, attachmentsJson };
 
@@ -189,6 +215,7 @@ export async function POST(req: Request) {
     {
       ok: true,
       async: true,
+      queued: !spawned,
       userMsg: userMsgOut,
       sessionId,
       timeoutMs: getAgentPromptTimeoutMs(),
