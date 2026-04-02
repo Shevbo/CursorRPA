@@ -112,30 +112,36 @@ TUNNEL_SSH_RPORT=22022
 EOF
 chmod 600 /etc/shectory/autossh-tunnel.env
 
+# Install wrapper script (systemd doesn't expand env vars in ExecStart args)
+cat > /usr/local/bin/autossh-pi-tunnel.sh <<EOF
+#!/usr/bin/env bash
+exec /usr/bin/autossh \\
+  -M 0 \\
+  -N \\
+  -o "ServerAliveInterval=30" \\
+  -o "ServerAliveCountMax=3" \\
+  -o "ExitOnForwardFailure=yes" \\
+  -o "StrictHostKeyChecking=no" \\
+  -o "IdentityFile=${TUNNEL_KEY}" \\
+  -p ${VDS_SSH_PORT} \\
+  -R 127.0.0.1:24444:localhost:4444 \\
+  -R 127.0.0.1:24555:localhost:4555 \\
+  -R 127.0.0.1:22022:localhost:22 \\
+  ${VDS_SSH_USER}@${VDS_SSH_HOST}
+EOF
+chmod +x /usr/local/bin/autossh-pi-tunnel.sh
+
 # Install service
 cat > /etc/systemd/system/autossh-pi-reverse-tunnel.service <<'SVCEOF'
 [Unit]
-Description=Autossh reverse tunnel Pi -> VDS (TCP/443 fallback)
+Description=Autossh reverse tunnel Pi -> VDS (TCP fallback)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=shevbo
-EnvironmentFile=/etc/shectory/autossh-tunnel.env
-ExecStart=/usr/bin/autossh \
-  -M 0 \
-  -N \
-  -o "ServerAliveInterval=30" \
-  -o "ServerAliveCountMax=3" \
-  -o "ExitOnForwardFailure=yes" \
-  -o "StrictHostKeyChecking=no" \
-  -o "IdentityFile=${TUNNEL_SSH_KEY}" \
-  -p ${TUNNEL_SSH_PORT:-443} \
-  -R 127.0.0.1:${TUNNEL_SYSLOG_PORT:-24444}:localhost:4444 \
-  -R 127.0.0.1:${TUNNEL_PINGMASTER_PORT:-24555}:localhost:4555 \
-  -R 127.0.0.1:${TUNNEL_SSH_RPORT:-22022}:localhost:22 \
-  ${TUNNEL_USER}@${TUNNEL_HOST}
+ExecStart=/usr/local/bin/autossh-pi-tunnel.sh
 Restart=always
 RestartSec=30
 
