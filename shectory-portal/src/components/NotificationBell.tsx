@@ -41,12 +41,17 @@ function playBeepFallback() {
   }
 }
 
-const SOUND_URL = "/sounds/notification.mp3";
+// Served via API route (works in production without rebuild)
+const SOUND_API = "/api/auth/notifications/sound";
 
-function playNotificationSound(audioRef: React.MutableRefObject<HTMLAudioElement | null>) {
+function makeSoundUrl(v?: number) {
+  return `${SOUND_API}?v=${v ?? Date.now()}`;
+}
+
+function playNotificationSound(audioRef: React.MutableRefObject<HTMLAudioElement | null>, soundVer: number) {
   try {
     if (!audioRef.current) {
-      const a = new Audio(SOUND_URL);
+      const a = new Audio(makeSoundUrl(soundVer));
       a.volume = 0.7;
       audioRef.current = a;
     }
@@ -77,6 +82,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   const [loading, setLoading] = useState(false);
   const [soundUploading, setSoundUploading] = useState(false);
   const [soundStatus, setSoundStatus] = useState<"ok" | "none" | null>(null);
+  const [soundVer, setSoundVer] = useState(() => Date.now());
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -97,7 +103,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
         setUnread((prev) => {
           // Play sound when unread count increases (not on first load)
           if (didMountRef.current && newUnread > prev) {
-            playNotificationSound(audioRef);
+            playNotificationSound(audioRef, soundVer);
           }
           return newUnread;
         });
@@ -138,7 +144,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
 
   // Check if custom sound file exists on server
   useEffect(() => {
-    fetch(SOUND_URL, { method: "HEAD" })
+    fetch(SOUND_API, { method: "HEAD", credentials: "include" })
       .then((r) => setSoundStatus(r.ok ? "ok" : "none"))
       .catch(() => setSoundStatus("none"));
   }, []);
@@ -146,14 +152,12 @@ export function NotificationBell({ className = "" }: { className?: string }) {
   // Preload audio on first user interaction to bypass autoplay restrictions
   useEffect(() => {
     function onFirstInteract() {
-      if (!audioRef.current) {
-        const a = new Audio(SOUND_URL);
+      if (!audioRef.current && soundStatus === "ok") {
+        const a = new Audio(makeSoundUrl(soundVer));
         a.volume = 0.7;
         a.load();
         audioRef.current = a;
       }
-      document.removeEventListener("click", onFirstInteract);
-      document.removeEventListener("keydown", onFirstInteract);
     }
     document.addEventListener("click", onFirstInteract, { once: true });
     document.addEventListener("keydown", onFirstInteract, { once: true });
@@ -161,7 +165,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
       document.removeEventListener("click", onFirstInteract);
       document.removeEventListener("keydown", onFirstInteract);
     };
-  }, []);
+  }, [soundStatus, soundVer]);
 
   async function uploadSound(file: File) {
     setSoundUploading(true);
@@ -174,8 +178,10 @@ export function NotificationBell({ className = "" }: { className?: string }) {
         body: fd,
       });
       if (r.ok) {
+        const newVer = Date.now();
+        setSoundVer(newVer);
         setSoundStatus("ok");
-        audioRef.current = null; // reset so it reloads
+        audioRef.current = null; // reset so it reloads with new version
       } else {
         const j = (await r.json().catch(() => ({}))) as { error?: string };
         alert(j.error ?? "Ошибка загрузки звука");
@@ -259,7 +265,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
                 <button
                   type="button"
                   className="text-[10px] text-slate-500 hover:text-slate-300"
-                  onClick={() => { audioRef.current = null; playNotificationSound(audioRef); }}
+                  onClick={() => { audioRef.current = null; playNotificationSound(audioRef, soundVer); }}
                   title="Проверить звук"
                 >
                   ▶ тест

@@ -221,8 +221,13 @@ export function BacklogTicketView({
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
     if (looksLikeAssistantBusy(last.content ?? "")) {
-      // If the ⏳ processing message is older than 10 minutes, treat as stale/idle
       const age = Date.now() - new Date((last as { createdAt: string | Date }).createdAt).getTime();
+      // If heartbeat (updatedAt) is fresh (< 3 min), agent is alive regardless of message age
+      const heartbeatAge = session?.updatedAt
+        ? Date.now() - new Date(session.updatedAt as string | Date).getTime()
+        : Infinity;
+      if (heartbeatAge < 3 * 60 * 1000) return "thinking";
+      // No fresh heartbeat — treat as stale after 10 min
       if (age > 10 * 60 * 1000) return "idle";
       return "thinking";
     }
@@ -230,7 +235,7 @@ export function BacklogTicketView({
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
     return "idle";
-  }, [session?.messages]);
+  }, [session?.messages, session?.updatedAt]);
 
   const agentPresence = useMemo((): ChatAgentPresence => {
     if (session?.isStopped) return "idle";

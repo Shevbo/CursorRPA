@@ -26,7 +26,7 @@ import { formatMsgTime } from "@/lib/format-utils";
 import { NotificationBell } from "@/components/NotificationBell";
 
 type Msg = { id: string; role: string; content: string; createdAt: string; attachmentsJson?: string | null };
-type Session = { id: string; title?: string; messages: Msg[] };
+type Session = { id: string; title?: string; updatedAt?: string; messages: Msg[] };
 type Ticket = { id: string; ticketKey?: string | null; title: string; description?: string | null; descriptionPrompt?: string };
 type MePayload = { ok: boolean; user: { email: string; role: string; fullName?: string } | null };
 type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
@@ -93,6 +93,11 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     if (last.role === "user") return "thinking";
     if (looksLikeAssistantBusy(last.content ?? "")) {
       const age = Date.now() - new Date(last.createdAt).getTime();
+      // If heartbeat (updatedAt) is fresh (< 3 min), agent is alive regardless of message age
+      const heartbeatAge = session?.updatedAt
+        ? Date.now() - new Date(session.updatedAt).getTime()
+        : Infinity;
+      if (heartbeatAge < 3 * 60 * 1000) return "thinking";
       if (age > 10 * 60 * 1000) return "idle";
       return "thinking";
     }
