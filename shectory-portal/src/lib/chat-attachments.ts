@@ -63,9 +63,25 @@ const BLOCKED_EXT = new Set(
   )
 );
 
+/** Значения по умолчанию; на сервере см. getChatAttachment*() после подмешивания настроек портала. */
 export const CHAT_ATTACHMENT_MAX_FILES = 15;
-export const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024; // per file
+export const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 export const CHAT_ATTACHMENT_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+
+export function getChatAttachmentMaxFiles(): number {
+  const n = Number(process.env.CHAT_ATTACHMENT_MAX_FILES);
+  return Number.isFinite(n) && n >= 1 && n <= 50 ? Math.floor(n) : CHAT_ATTACHMENT_MAX_FILES;
+}
+
+export function getChatAttachmentMaxBytes(): number {
+  const n = Number(process.env.CHAT_ATTACHMENT_MAX_BYTES);
+  return Number.isFinite(n) && n >= 1024 ? Math.floor(n) : CHAT_ATTACHMENT_MAX_BYTES;
+}
+
+export function getChatAttachmentMaxTotalBytes(): number {
+  const n = Number(process.env.CHAT_ATTACHMENT_MAX_TOTAL_BYTES);
+  return Number.isFinite(n) && n >= 1024 ? Math.floor(n) : CHAT_ATTACHMENT_MAX_TOTAL_BYTES;
+}
 
 export function parseChatAttachmentsJson(raw: string | null | undefined): ChatAttachmentMeta[] {
   try {

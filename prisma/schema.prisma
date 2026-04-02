@@ -427,3 +427,19 @@ model PortalEmailCode {
   @@index([purpose, code, expiresAt])
   @@map("portal_email_codes")
 }
+
+/// Настройки портала (не-секреты и секреты в UI «Настройки»); секреты не отдаются в GET.
+model PortalSetting {
+  id          String   @id @default(cuid())
+  /// Ключ совпадает с именем переменной окружения (например AGENT_PROMPT_TIMEOUT_MS).
+  key         String   @unique
+  value       String   @default("") @db.Text
+  isSecret    Boolean  @default(false) @map("is_secret")
+  label       String   @default("")
+  description String   @default("") @db.Text
+  groupName   String   @default("general") @map("group_name")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([groupName])
+  @@map("portal_settings")
+}

@@ -3,10 +3,26 @@ import * as fs from "node:fs";
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HOME = process.env.HOME ?? "/home/shectory";
 const AGENT_BIN = process.env.AGENT_BIN ?? `${HOME}/.local/bin/agent`;
 const CURSOR_ENV_FILE = process.env.CURSOR_ENV_FILE ?? `${HOME}/.config/cursor-rpa/env.sh`;
+
+/** CursorRPA/data/portal-runtime-env.json — подмешивание настроек из UI портала. */
+export function loadPortalRuntimeEnv() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const jsonPath = path.join(here, "..", "..", "..", "data", "portal-runtime-env.json");
+    if (!fs.existsSync(jsonPath)) return;
+    const j = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+    for (const [k, v] of Object.entries(j)) {
+      if (typeof v === "string" && v.length > 0) process.env[k] = v;
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export function loadApiKey() {
   try {
@@ -23,6 +39,15 @@ export function loadApiKey() {
     }
   } catch {
     // ignore
+  }
+}
+
+function mergeExtraEnv(env) {
+  for (const k of Object.keys(process.env)) {
+    if (k.startsWith("SHECTORY_") && env[k] === undefined) env[k] = process.env[k];
+    if ((k === "GEMINI_API_KEY" || k === "GOOGLE_API_KEY") && env[k] === undefined) env[k] = process.env[k];
+    if (k.startsWith("AGENT_") && env[k] === undefined) env[k] = process.env[k];
+    if (k.startsWith("AUDITOR_") && env[k] === undefined) env[k] = process.env[k];
   }
 }
 
@@ -63,24 +88,85 @@ function slimAgentEnv() {
   for (const k of Object.keys(process.env)) {
     if (k.startsWith("CURSOR_") && env[k] === undefined) env[k] = process.env[k];
   }
+  mergeExtraEnv(env);
   return env;
 }
 
 /**
- * Cursor agent CLI currently does NOT take the prompt from stdin.
- * To avoid argv E2BIG on large prompts, we spill prompt into a temp file and pass a short wrapper prompt instead.
+ * Прямой вызов Google Generative Language API (коммерческий ключ, не Cursor CLI).
+ * @param {string} prompt
+ * @param {string | undefined} modelId
+ * @param {number} timeoutMs
+ */
+async function runGeminiApiPrompt(prompt, modelId, timeoutMs) {
+  const key = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!key) {
+    return {
+      ok: false,
+      stdout: "",
+      stderr: "GEMINI_API_KEY или GOOGLE_API_KEY не задан (Настройки портала → секреты или env).",
+    };
+  }
+  const model = String(modelId || "gemini-2.0-flash").trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: ac.signal,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: String(prompt ?? "") }] }],
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.35 },
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    clearTimeout(t);
+    if (!r.ok) {
+      const err = j?.error?.message || JSON.stringify(j).slice(0, 800);
+      return { ok: false, stdout: "", stderr: `[Gemini API ${r.status}] ${err}` };
+    }
+    const text =
+      j?.candidates?.[0]?.content?.parts?.map((p) => (typeof p.text === "string" ? p.text : "")).join("") || "";
+    if (!String(text).trim()) {
+      return { ok: false, stdout: "", stderr: "Gemini API: пустой ответ (нет candidates/parts)." };
+    }
+    return { ok: true, stdout: text, stderr: "" };
+  } catch (e) {
+    clearTimeout(t);
+    const msg = e?.name === "AbortError" ? `timeout ${timeoutMs}ms` : String(e);
+    return { ok: false, stdout: "", stderr: `[Gemini API] ${msg}` };
+  }
+}
+
+function resolveBackend(role) {
+  const r = String(role || "executor");
+  if (r === "auditor") {
+    let b = String(process.env.SHECTORY_AUDITOR_BACKEND || "").trim();
+    if (!b) b = String(process.env.SHECTORY_EXECUTOR_BACKEND || "cursor_cli").trim();
+    return b;
+  }
+  return String(process.env.SHECTORY_EXECUTOR_BACKEND || "cursor_cli").trim();
+}
+
+/**
  * @param {string} workspacePath
  * @param {string} prompt
  * @param {number} timeoutMs
  * @param {string | undefined} modelId
- * @returns {Promise<{ ok: boolean; stdout: string; stderr: string }>}
+ * @param {"executor"|"auditor"} [role]
  */
-export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
+export async function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId, role = "executor") {
+  loadPortalRuntimeEnv();
   loadApiKey();
+  const backend = resolveBackend(role);
+  if (backend === "gemini_api") {
+    return runGeminiApiPrompt(prompt, modelId, timeoutMs);
+  }
+
   const env = slimAgentEnv();
   const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath];
-  // Shectory Portal policy: agent must be able to run shell/git/npm in project workspaces.
-  // Can be overridden for emergency hardening.
   const sandboxMode = String(process.env.SHECTORY_AGENT_SANDBOX_MODE || "disabled").trim();
   if (sandboxMode) args.push("--sandbox", sandboxMode);
   const allowCommands = String(process.env.SHECTORY_AGENT_ALLOW_COMMANDS || "1").trim();
@@ -113,7 +199,7 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
     const child = spawn(AGENT_BIN, args, { env, shell: false });
     let stdout = "";
     let stderr = "";
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       try {
         child.kill("SIGTERM");
       } catch {
@@ -132,11 +218,11 @@ export function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId) {
     child.stdout?.on("data", (d) => (stdout += d.toString()));
     child.stderr?.on("data", (d) => (stderr += d.toString()));
     child.on("close", (code) => {
-      clearTimeout(t);
+      clearTimeout(timer);
       resolve({ ok: code === 0, stdout, stderr });
     });
     child.on("error", (e) => {
-      clearTimeout(t);
+      clearTimeout(timer);
       resolve({ ok: false, stdout, stderr: String(e) });
     });
   });

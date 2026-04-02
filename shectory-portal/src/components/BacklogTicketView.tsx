@@ -25,7 +25,7 @@ import {
   stripTicketContextRefreshTag,
   userRequestedTicketContextRefresh,
 } from "@/lib/ticket-chat-context";
-import { CHAT_ATTACHMENT_MAX_FILES } from "@/lib/chat-attachments";
+import { useChatAttachmentLimits } from "@/hooks/useChatAttachmentLimits";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
 type SessionWithMessages = Omit<ChatSession, "processingMsgId"> & { messages: ChatMessage[]; processingMsgId?: string | null };
@@ -77,6 +77,7 @@ export function BacklogTicketView({
   const [session, setSession] = useState<SessionWithMessages | null>(initialSession as SessionWithMessages | null);
   const [chatInput, setChatInput] = useState("");
   const [pendingChatFiles, setPendingChatFiles] = useState<File[]>([]);
+  const { maxFiles: chatAttachMaxFiles } = useChatAttachmentLimits();
   const chatAttachInputRef = useRef<HTMLInputElement | null>(null);
   const chatIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [loadingChat, setLoadingChat] = useState(false);
@@ -152,12 +153,15 @@ export function BacklogTicketView({
     if (lr !== undefined) setRun(lr);
   }, [itemId]);
 
-  const onTicketChatPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = collectClipboardFiles(e);
-    if (files.length === 0) return;
-    e.preventDefault();
-    setPendingChatFiles((prev) => mergePendingFiles(prev, files));
-  }, []);
+  const onTicketChatPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = collectClipboardFiles(e);
+      if (files.length === 0) return;
+      e.preventDefault();
+      setPendingChatFiles((prev) => mergePendingFiles(prev, files, chatAttachMaxFiles));
+    },
+    [chatAttachMaxFiles]
+  );
 
   // Checklist API helpers
   const loadChecklist = useCallback(async () => {
@@ -1561,7 +1565,7 @@ export function BacklogTicketView({
             <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
               Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
               <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля. Скрепка и{" "}
-              <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {CHAT_ATTACHMENT_MAX_FILES} файлов)
+              <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {chatAttachMaxFiles} файлов)
               в workspace для агента.
             </p>
             <input
@@ -1571,7 +1575,7 @@ export function BacklogTicketView({
               className="hidden"
               onChange={(e) => {
                 const list = e.target.files ? Array.from(e.target.files) : [];
-                setPendingChatFiles((prev) => [...prev, ...list].slice(0, CHAT_ATTACHMENT_MAX_FILES));
+                setPendingChatFiles((prev) => [...prev, ...list].slice(0, chatAttachMaxFiles));
                 e.target.value = "";
               }}
             />
@@ -1616,7 +1620,7 @@ export function BacklogTicketView({
                 <ChatPaperclipAttach
                   className="pointer-events-auto absolute bottom-1 right-1 z-10"
                   disabled={
-                    loadingChat || !session?.id || pendingChatFiles.length >= CHAT_ATTACHMENT_MAX_FILES
+                    loadingChat || !session?.id || pendingChatFiles.length >= chatAttachMaxFiles
                   }
                   onPickFiles={() => chatAttachInputRef.current?.click()}
                 />

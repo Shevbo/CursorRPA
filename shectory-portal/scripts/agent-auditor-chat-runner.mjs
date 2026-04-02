@@ -172,7 +172,8 @@ async function main() {
     workspacePath,
     shectoryWikiPreamble() + auditorPrompt,
     timeoutMs,
-    AUDITOR_MODEL_ID
+    AUDITOR_MODEL_ID,
+    "auditor"
   );
   const raw = (ok ? stdout : stderr || stdout).trim();
   const j = safeJsonParse(raw);

@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent } from "react";
-import { CHAT_ATTACHMENT_MAX_FILES, parseChatAttachmentsJson } from "@/lib/chat-attachments";
+import { parseChatAttachmentsJson } from "@/lib/chat-attachments";
+import { useChatAttachmentLimits } from "@/hooks/useChatAttachmentLimits";
 import { useSearchParams } from "next/navigation";
 import {
   CHAT_POST_MESSAGE_TYPE,
@@ -66,6 +67,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
   const [agentSpec, setAgentSpec] = useState<{ executor: string; auditor: string } | null>(null);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const { maxFiles: chatAttachMaxFiles } = useChatAttachmentLimits();
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -290,12 +292,15 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     return () => window.removeEventListener("message", onMsg);
   }, [embedThread]);
 
-  const onFramePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = collectClipboardFiles(e);
-    if (files.length === 0) return;
-    e.preventDefault();
-    setPendingFiles((prev) => mergePendingFiles(prev, files));
-  }, []);
+  const onFramePaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = collectClipboardFiles(e);
+      if (files.length === 0) return;
+      e.preventDefault();
+      setPendingFiles((prev) => mergePendingFiles(prev, files, chatAttachMaxFiles));
+    },
+    [chatAttachMaxFiles]
+  );
 
   useEffect(() => {
     if (!sessionId) return;
@@ -521,7 +526,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
           <p className="mb-1 px-1 text-[10px] leading-snug text-slate-500">
             Первое сообщение в сессии передаёт полный контекст тикета; дальше — только ваш текст. Чтобы снова отправить поля
             тикета, добавьте <span className="font-mono text-slate-400">[обновить контекст]</span>. Скрепка и{" "}
-            <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {CHAT_ATTACHMENT_MAX_FILES} шт.) в
+            <span className="font-mono text-slate-400">Ctrl+V</span> — вложения (до {chatAttachMaxFiles} шт.) в
             workspace.
           </p>
           <input
@@ -531,7 +536,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             className="hidden"
             onChange={(e) => {
               const list = e.target.files ? Array.from(e.target.files) : [];
-              setPendingFiles((prev) => [...prev, ...list].slice(0, CHAT_ATTACHMENT_MAX_FILES));
+              setPendingFiles((prev) => [...prev, ...list].slice(0, chatAttachMaxFiles));
               e.target.value = "";
             }}
           />
@@ -576,7 +581,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
               />
               <ChatPaperclipAttach
                 className="pointer-events-auto absolute bottom-1.5 right-2 z-10"
-                disabled={loading || !sessionId || pendingFiles.length >= CHAT_ATTACHMENT_MAX_FILES}
+                disabled={loading || !sessionId || pendingFiles.length >= chatAttachMaxFiles}
                 onPickFiles={() => attachInputRef.current?.click()}
               />
             </div>

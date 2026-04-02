@@ -15,7 +15,7 @@ type SessionPayload = {
   exp: number;
 };
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
@@ -239,6 +239,14 @@ export function isAdminRequest(req: Request): boolean {
 export function isAdminSession(): boolean {
   const s = currentPortalSessionFromCookies();
   return s?.role === "admin" || s?.role === "superadmin";
+}
+
+export function isSuperAdminSession(): boolean {
+  return currentPortalSessionFromCookies()?.role === "superadmin";
+}
+
+export function isSuperAdminRequest(req: Request): boolean {
+  return currentPortalSessionFromRequest(req)?.role === "superadmin";
 }
 
 /** CUID пользователя портала для текущей админ-сессии (уведомления, аудит). */

@@ -68,6 +68,13 @@
 - Команды shell в UI выполняются **только после подтверждения** пользователя; выводить блоки `<<<SHELL_COMMAND>>>…<<</SHELL_COMMAND>>>` и маркер ожидания ответа, как описано в системных инструкциях раннера.
 - Любой новый продукт или крупная фича: **сначала** — контекст из этой Wikipedia + карточка проекта + актуальные поля тикета/сессии.
 
+### Настройки портала, роли и внешний Gemini API (апрель 2026)
+
+- **UI**: `/settings` (кнопка с `/projects`) — каталог пользователей с назначением ролей (**только `superadmin`**), редактирование **несекретных** констант из реестра `shectory-portal/src/lib/portal-settings-registry.ts`, загрузка MP3 для колокольчика (тот же маршрут `POST /api/auth/notifications/sound`), сохранение **`GEMINI_API_KEY`** (только superadmin, значение не отдаётся в API).
+- **БД**: модель `PortalSetting` (`portal_settings`), миграция `20260402180000_portal_settings`. После сохранения настройки дублируются в **`data/portal-runtime-env.json`** (в `.gitignore`) — его читают фоновые Node-скрипты (`scripts/lib/agent-cli.mjs` при каждом вызове) и подмешивают в `process.env` при старте Next (`instrumentation.ts` + `src/lib/portal-runtime-env.ts`).
+- **ИИ**: `SHECTORY_EXECUTOR_BACKEND` и `SHECTORY_AUDITOR_BACKEND` — `cursor_cli` (Cursor Agent CLI, как раньше) или **`gemini_api`** (прямой вызов Google Generative Language API, модель из `SHECTORY_*_AGENT_MODEL_ID`). Расширение на других провайдеров — добавлять ветку в `agent-cli.mjs` и ключи в реестр.
+- **API**: `GET/PATCH /api/admin/settings`, `POST /api/admin/settings/secrets`, `GET /api/admin/users`, `PATCH /api/admin/users/[id]`, `GET /api/system/limits` (лимиты вложений для клиента чата).
+
 ### Адаптивный UI портала (CURSO-4, апрель 2026)
 
 - Ключевые экраны в `shectory-portal/src/`: **без горизонтального скролла страницы** (`min-w-0`, `overflow-x-hidden` на корневых контейнерах), широкие таблицы — только внутри `overflow-x-auto`.

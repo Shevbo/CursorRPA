@@ -9,13 +9,14 @@ import fs from "node:fs/promises";
 import type { Project } from "@prisma/client";
 import {
   CHAT_ATTACHMENTS_DIR,
-  CHAT_ATTACHMENT_MAX_BYTES,
-  CHAT_ATTACHMENT_MAX_FILES,
-  CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
+  getChatAttachmentMaxBytes,
+  getChatAttachmentMaxFiles,
+  getChatAttachmentMaxTotalBytes,
   safeAttachmentBasename,
   attachmentExtensionOk,
   type ChatAttachmentMeta,
 } from "@/lib/chat-attachments";
+import { loadRuntimeEnvIntoProcess } from "@/lib/portal-runtime-env";
 
 function redactSecrets(text: string): string {
   return text.replace(/(sshpass\s+-p\s+)(\"[^\"]*\"|'[^']*'|\S+)/gi, "$1'***'");
@@ -101,6 +102,11 @@ export async function POST(req: Request) {
   if (!adminAuthOk(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  loadRuntimeEnvIntoProcess();
+
+  const maxFiles = getChatAttachmentMaxFiles();
+  const maxBytes = getChatAttachmentMaxBytes();
+  const maxTotal = getChatAttachmentMaxTotalBytes();
 
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   let projectId: string | undefined;
@@ -127,20 +133,20 @@ export async function POST(req: Request) {
       if (!(entry instanceof Blob)) continue;
       const name = "name" in entry && typeof (entry as File).name === "string" ? (entry as File).name : "file";
       const buf = Buffer.from(await entry.arrayBuffer());
-      if (buf.length > CHAT_ATTACHMENT_MAX_BYTES) {
+      if (buf.length > maxBytes) {
         return NextResponse.json(
-          { error: `Файл «${name}» слишком больший (макс. ${CHAT_ATTACHMENT_MAX_BYTES} байт на файл)` },
+          { error: `Файл «${name}» слишком больший (макс. ${maxBytes} байт на файл)` },
           { status: 400 }
         );
       }
       total += buf.length;
-      if (total > CHAT_ATTACHMENT_MAX_TOTAL_BYTES) {
+      if (total > maxTotal) {
         return NextResponse.json({ error: "Суммарный размер вложений превышает лимит" }, { status: 400 });
       }
       files.push({ name, data: buf });
     }
-    if (files.length > CHAT_ATTACHMENT_MAX_FILES) {
-      return NextResponse.json({ error: `Не более ${CHAT_ATTACHMENT_MAX_FILES} файлов за раз` }, { status: 400 });
+    if (files.length > maxFiles) {
+      return NextResponse.json({ error: `Не более ${maxFiles} файлов за раз` }, { status: 400 });
     }
   } else {
     let body: { projectId?: string; projectSlug?: string; sessionId?: string; message?: string };

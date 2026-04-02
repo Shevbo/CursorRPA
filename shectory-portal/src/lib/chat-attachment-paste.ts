@@ -33,12 +33,12 @@ export function collectClipboardFiles(e: ClipboardEvent): File[] {
   return Array.from(byKey.values());
 }
 
-export function mergePendingFiles(prev: File[], incoming: File[]): File[] {
+export function mergePendingFiles(prev: File[], incoming: File[], maxFiles = CHAT_ATTACHMENT_MAX_FILES): File[] {
   if (incoming.length === 0) return prev;
   // Deduplicate against already-pending files by name+size
   const existingKeys = new Set(prev.map((f) => `${f.name}:${f.size}`));
   const newOnly = incoming.filter((f) => !existingKeys.has(`${f.name}:${f.size}`));
-  return [...prev, ...newOnly].slice(0, CHAT_ATTACHMENT_MAX_FILES);
+  return [...prev, ...newOnly].slice(0, maxFiles);
 }
 
 /** Human-readable file size: "12 KB", "1.4 MB", etc. */

@@ -45,6 +45,12 @@ export default async function ProjectsPage({
           </div>
         </div>
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <Link
+            href="/settings"
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 touch-manipulation"
+          >
+            Настройки
+          </Link>
           <NotificationBell />
           {canEditDescriptions && (
             <Link

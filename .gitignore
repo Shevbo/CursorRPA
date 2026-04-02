@@ -11,3 +11,6 @@ apikey.txt
 .next-start.log
 CursorRPA.code-workspace
 backups/
+
+# Runtime env с секретами из UI настроек (не коммитить)
+data/portal-runtime-env.json
