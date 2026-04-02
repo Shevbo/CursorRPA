@@ -35,6 +35,7 @@ ws_path_for() {
     cursorrpa) echo "/home/shectory/workspaces/CursorRPA" ;;
     shectory-portal) echo "/home/shectory/workspaces/CursorRPA/shectory-portal" ;;
     komissionka) echo "/home/shectory/workspaces/komissionka" ;;
+    ourdiary) echo "/home/shectory/workspaces/ourdiary" ;;
     piranha-ai) echo "/home/shectory/workspaces/PiranhaAI" ;;
     pingmaster) echo "/home/shectory/workspaces/PingMaster" ;;
     *) echo "/home/shectory/workspaces/$1" ;;
