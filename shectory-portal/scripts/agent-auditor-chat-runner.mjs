@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
+import { applyStepDoneFromReply } from "./lib/checklist.mjs";
 
 const prisma = new PrismaClient();
 
@@ -128,6 +129,12 @@ async function main() {
   const nextCtx = String(j.next_context || "").trim();
 
   if (j.verdict === "success") {
+    // Confirm checklist steps — auditor verified the work is done
+    try {
+      await applyStepDoneFromReply(prisma, sessionId, executorReply);
+    } catch {
+      // non-critical
+    }
     await prisma.chatMessage.create({
       data: {
         sessionId,

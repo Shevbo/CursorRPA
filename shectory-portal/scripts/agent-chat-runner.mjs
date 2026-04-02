@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 import { notifyPortalUser } from "./lib/portal-notify.mjs";
+import { applyStepDoneFromReply } from "./lib/checklist.mjs";
 
 const prisma = new PrismaClient();
 
@@ -28,7 +29,11 @@ const RU_TAIL =
   "<<<SHELL_COMMAND>>>\n" +
   "команда\n" +
   "<<</SHELL_COMMAND>>>\n" +
-  "после чего добавь строку [***waiting for answer***].";
+  "после чего добавь строку [***waiting for answer***].\n" +
+  "━━ Чеклист тикета ━━\n" +
+  "Если в тикете есть чеклист с пронумерованными шагами — отмечай завершённые шаги в КОНЦЕ ответа маркерами вида:\n" +
+  "[STEP_DONE: точное название шага из чеклиста]\n" +
+  "Можно несколько маркеров подряд, если за один ответ завершено несколько шагов. Маркеры ставь только когда шаг реально выполнен (код написан, задача решена), не авансом.";
 
 /** Сколько последних сообщений тянуть из БД (хвост переписки). */
 const DB_TAIL = 420;
@@ -145,7 +150,10 @@ async function main() {
   const notifyUserId = String(notifyUserIdRaw || "").trim();
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
 
-  const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
+  const sess = await prisma.chatSession.findUnique({
+    where: { id: sessionId },
+    select: { isStopped: true, backlogItemId: true },
+  });
   if (sess?.isStopped) return;
 
   let prompt = "";
@@ -243,9 +251,33 @@ async function main() {
     }
   }
 
+  // Append current checklist state so agent knows which steps exist and which are done
+  let checklistBlock = "";
+  if (sess?.backlogItemId) {
+    try {
+      const checkItems = await prisma.backlogCheckItem.findMany({
+        where: { backlogItemId: sess.backlogItemId },
+        orderBy: [{ orderNum: "asc" }, { createdAt: "asc" }],
+        select: { text: true, done: true },
+      });
+      if (checkItems.length > 0) {
+        const lines = checkItems.map((c, i) =>
+          `${i + 1}. [${c.done ? "x" : " "}] ${c.text}`
+        );
+        checklistBlock =
+          "\n\n━━ Чеклист тикета (текущее состояние) ━━\n" +
+          "Ниже — список шагов тикета. Отмеченные [x] уже выполнены, [ ] — ещё нет.\n" +
+          "Когда завершаешь шаг — добавь в КОНЦЕ ответа: [STEP_DONE: точное название шага]\n\n" +
+          lines.join("\n");
+      }
+    } catch {
+      // non-critical
+    }
+  }
+
   const { ok, stdout, stderr } = await runAgentPrompt(
     workspacePath,
-    shectoryWikiPreamble() + composed + RU_TAIL,
+    shectoryWikiPreamble() + composed + checklistBlock + RU_TAIL,
     timeoutMs,
     EXECUTOR_MODEL_ID
   );
@@ -261,6 +293,13 @@ async function main() {
   });
 
   await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+
+  // Auto-update checklist: mark steps done based on [STEP_DONE: ...] markers in reply
+  try {
+    await applyStepDoneFromReply(prisma, sessionId, reply);
+  } catch {
+    // non-critical — ignore checklist errors
+  }
 
   // Re-fetch messages to check rework count before launching auditor
   const freshMsgs = await prisma.chatMessage.findMany({

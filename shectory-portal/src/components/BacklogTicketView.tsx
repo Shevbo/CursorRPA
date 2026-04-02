@@ -148,6 +148,14 @@ export function BacklogTicketView({
 
   useEffect(() => { void loadChecklist(); }, [loadChecklist]);
 
+  // Poll checklist while agent is thinking — picks up [STEP_DONE] updates in real time
+  useEffect(() => {
+    if (agentPresence !== "thinking" && agentPresence !== "auditing") return;
+    const t = setInterval(() => void loadChecklist(), 5000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentPresence, loadChecklist]);
+
   const toggleCheckItem = useCallback(async (id: string, done: boolean) => {
     setCheckItems((prev) => prev.map((c) => c.id === id ? { ...c, done } : c));
     await fetch("/api/project/backlog/checklist", {
@@ -1097,6 +1105,12 @@ export function BacklogTicketView({
               )}
               {checkItems.length > 0 && checkItems.every((c) => c.done) && (
                 <span className="rounded-full bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">✓ готово</span>
+              )}
+              {(agentPresence === "thinking" || agentPresence === "auditing") && checkItems.some((c) => !c.done) && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
+                  <span className="size-1.5 animate-pulse rounded-full bg-blue-400" aria-hidden />
+                  агент работает
+                </span>
               )}
             </div>
             <span
