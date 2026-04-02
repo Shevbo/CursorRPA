@@ -27,7 +27,7 @@ import {
 import { CHAT_ATTACHMENT_MAX_FILES } from "@/lib/chat-attachments";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
-type SessionWithMessages = ChatSession & { messages: ChatMessage[]; processingMsgId?: string | null };
+type SessionWithMessages = Omit<ChatSession, "processingMsgId"> & { messages: ChatMessage[]; processingMsgId?: string | null };
 type ItemWithSprint = BacklogItem & { sprint?: Sprint | null };
 
 type RunWithSteps = AgentRun & { steps: AgentRunStep[] };

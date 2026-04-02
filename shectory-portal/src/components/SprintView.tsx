@@ -6,7 +6,7 @@ import type { ChatMessage, ChatSession, Sprint } from "@prisma/client";
 import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import { formatMsgTime } from "@/lib/format-utils";
 
-type SessionWithMessages = ChatSession & { messages: ChatMessage[] };
+type SessionWithMessages = Omit<ChatSession, "processingMsgId"> & { messages: ChatMessage[]; processingMsgId?: string | null };
 type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
 
 const EXECUTOR_PREFIX = "Агент-исполнитель (R) Shectory";
