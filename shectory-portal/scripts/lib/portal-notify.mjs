@@ -22,26 +22,26 @@ async function notifyTelegram(payload, baseUrl) {
   let linkLine = "";
   if (href) {
     const base = (baseUrl || process.env.PORTAL_BASE_URL || "https://shectory.ru").replace(/\/$/, "");
-    const url = href.startsWith("http") ? href : `${base}${href}`;
-    linkLine = `\n🔗 ${url}`;
+    const absUrl = href.startsWith("http") ? href : `${base}${href}`;
+    linkLine = `\n🔗 <a href="${absUrl}">${absUrl}</a>`;
   }
 
-  // Escape MarkdownV2 special chars
-  const esc = (s) => s.replace(/[_*[\]()~`>#+=|{}.!\\-]/g, "\\$&");
+  // Escape HTML special chars
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const text = [
-    title ? `*${esc(title)}*` : null,
+    title ? `<b>${esc(title)}</b>` : null,
     body ? esc(body) : null,
-    linkLine ? linkLine : null,
+    linkLine || null,
   ].filter(Boolean).join("\n");
 
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const apiUrl = `https://api.telegram.org/bot${token}/sendMessage`;
   for (const chatId of chatIds) {
     try {
-      const r = await fetch(url, {
+      const r = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text, parse_mode: "MarkdownV2" }),
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true }),
         signal: AbortSignal.timeout(8000),
       });
       if (!r.ok) {
