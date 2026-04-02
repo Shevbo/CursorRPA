@@ -65,7 +65,14 @@
   - Эндпоинты: `GET /api/health/hoster`, `GET /api/health/shectory`, `GET /api/health/pi`.
   - Норма: расчёт health **кэшируется на 5 минут** на стороне сервера (чтобы не долбить `ssh`/диск при частом опросе UI).
   - На `/projects` отображается health-блок: **hoster + DB**, **shectory**, **Pi** с пометкой «интервал проверки 5 мин».
-  - Для Pi по умолчанию используется `PI_MONITOR_SSH`/`PI_HEALTH_SSH` (ssh-команда до Pi). Без SSH будет `down/skipped` — это считается «не настроено».
+  - **Pi health — push-модель (пульс)**: Pi сам отправляет данные о своём здоровье каждые 5 минут на `POST /api/health/pi/pulse` (bearer-токен `PI_PULSE_INGEST_SECRET`). Портал читает последний пульс из БД (`pi_health_pulses`). Если пульс свежее `PI_PULSE_MAX_AGE_MS` (20 мин) — показывает его данные; иначе — fallback на SSH/TCP.
+
+- **Pi Health Pulse (без VPN)**:
+  - Скрипт: `/opt/shectory-pi-pulse/pulse.py` (на Pi, скачан с GitHub).
+  - Env: `/etc/shectory/pi-pulse.env` — `PI_PULSE_URL`, `PI_PULSE_TOKEN`, `PI_PULSE_DEVICE_KEY`.
+  - Systemd: `shectory-pi-pulse.timer` → `shectory-pi-pulse.service` (каждые 5 минут).
+  - Уведомления: при смене статуса пульса (ok/warn/critical) — Telegram + portal bell. Управляется `PI_PULSE_TELEGRAM=1` в `shectory-portal/.env`.
+  - Установка на Pi одной командой: `curl -fsSL https://raw.githubusercontent.com/Shevbo/CursorRPA/main/scripts/vpn/pi-setup-all.sh | sudo bash`
 
 - **Telegram (регулярные сообщения + алерты)**:
   - Сервис: systemd **user-unit** вида `cursorrpa-telegram-<projectSlug>.service` (пример: `cursorrpa-telegram-cursor-rpa.service`).
@@ -82,9 +89,29 @@
     - Метрики CPU/RAM/HDD на Pi — если задан `PI_MONITOR_SSH` (ssh до Pi без пароля по ключам).
 
   - **SSH на Pi (как задать `PI_MONITOR_SSH`)**:
-    - Норма для бота и скриптов: **OpenSSH** с **`BatchMode=yes`** и входом **по ключу** (без интерактива). Пример формы: `ssh -o BatchMode=yes -o ConnectTimeout=5 <user>@<pi-host>`, где `<pi-host>` — tailscale-IP или имя из `~/.ssh/config`.
-    - **Tailscale SSH** (когда `ssh` пишет `tailscale:` и просит открыть ссылку в браузере) для **фонового мониторинга не подходит**, пока не настроена автоматическая аутентификация — бот не может «пройти» браузерный чек.
+    - Норма для бота и скриптов: **OpenSSH** с **`BatchMode=yes`** и входом **по ключу** (без интерактива). Пример формы: `ssh -o BatchMode=yes -o ConnectTimeout=5 <user>@<pi-host>`, где `<pi-host>` — WireGuard IP `10.66.0.2` или имя из `~/.ssh/config`.
+    - **Tailscale SSH** (когда `ssh` пишет `tailscale:` и просит открыть ссылку в браузере) для **фонового мониторинга не подходит** — бот не может «пройти» браузерный чек.
     - В регламенте по общему хосту Raspberry Pi в примерах путей используется Linux-пользователь **`shevbo`** (см. [raspi-safe-node-process-management-ru.md](raspi-safe-node-process-management-ru.md)), а не обязательно `pi`. Имя пользователя в `PI_MONITOR_SSH` должно **совпадать с реальной учёткой на Pi**.
+
+### Сетевая инфраструктура Pi ↔ VDS
+
+- **Собственный VPN (WireGuard + autossh fallback)**:
+  - Основной канал: **WireGuard** UDP `51820` — Pi как клиент (`10.66.0.2`), VDS как сервер (`10.66.0.1`).
+  - Fallback: **autossh reverse tunnel** TCP `2222` — Pi пробрасывает порты `4444`, `4555`, `22` на VDS (`127.0.0.1:24444`, `24555`, `22022`).
+  - Подсеть: `10.66.0.0/24`.
+  - SSH к Pi с VDS: `ssh shevbo@10.66.0.2` (WireGuard) или `ssh -p 22022 shevbo@127.0.0.1` (fallback).
+
+- **Nginx на VDS (порты `:4444` и `:4555`)**:
+  - Конфиг: `/etc/nginx/conf.d/pi-services.conf`.
+  - Upstream приоритет: WireGuard `10.66.0.2` → autossh `127.0.0.1:2xxxx` → Tailscale `100.79.47.61` (last resort).
+  - `:4444` — Syslog Pi, `:4555` — PingMaster Pi.
+
+- **Мониторинг VPN**:
+  - `wg-monitor.timer` на VDS — каждую минуту проверяет handshake WireGuard и доступность портов.
+  - При смене статуса (`ok`/`fallback`/`down`) отправляет Telegram-алерт.
+  - Логи: `journalctl -u wg-monitor.service`.
+
+- **Скрипты**: `scripts/vpn/` — полный набор: `wg-server-setup.sh`, `wg-pi-client-setup.sh`, `pi-setup-all.sh`, `deploy-nginx-pi-proxy.sh`, `runbook.md`.
 
 ### Агент-исполнитель и агент-аудитор (тикет-чат)
 
