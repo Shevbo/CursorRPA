@@ -37,6 +37,8 @@ type WelcomeStatus = {
 type AgentSpecPayload = { ok: boolean; executor?: string; auditor?: string };
 const EXECUTOR_PREFIX = "Агент-исполнитель (R) Shectory";
 const AUDITOR_PREFIX = "Агент-аудитор (R) Shectory";
+const CHAT_INITIAL_VISIBLE = 7;
+const CHAT_LOAD_MORE_STEP = 7;
 
 export function ProjectWorkspace({
   projectSlug,
@@ -77,14 +79,36 @@ export function ProjectWorkspace({
   const [welcomeErr, setWelcomeErr] = useState("");
   const [mainFrameBrief, setMainFrameBrief] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const skipScrollToEndRef = useRef(false);
+  const [chatVisibleCount, setChatVisibleCount] = useState(CHAT_INITIAL_VISIBLE);
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId),
     [sessions, activeId]
   );
 
+  const allChatMessages = active?.messages ?? [];
+  const visibleChatMessages = useMemo(() => {
+    if (allChatMessages.length <= chatVisibleCount) return allChatMessages;
+    return allChatMessages.slice(-chatVisibleCount);
+  }, [allChatMessages, chatVisibleCount]);
+
   useEffect(() => {
+    setChatVisibleCount(CHAT_INITIAL_VISIBLE);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (tab !== "chat") return;
+    if (skipScrollToEndRef.current) {
+      skipScrollToEndRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [active?.messages, activeId, loading, tab]);
+  }, [visibleChatMessages, activeId, loading, tab]);
+
+  const loadEarlierChatMessages = () => {
+    skipScrollToEndRef.current = true;
+    setChatVisibleCount((c) => Math.min(c + CHAT_LOAD_MORE_STEP, allChatMessages.length));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -166,7 +190,7 @@ export function ProjectWorkspace({
   );
 
   const proposedCmds = useMemo(() => {
-    const lastAssistant = [...(active?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+    const lastAssistant = [...allChatMessages].reverse().find((m) => m.role === "assistant");
     const text = String(lastAssistant?.content ?? "");
     const out: string[] = [];
     const re = /<<<SHELL_COMMAND>>>([\s\S]*?)<<<\/SHELL_COMMAND>>>/g;
@@ -176,7 +200,7 @@ export function ProjectWorkspace({
       if (cmd) out.push(cmd);
     }
     return out;
-  }, [active?.messages]);
+  }, [allChatMessages]);
 
   const loadTree = useCallback(async () => {
     const r = await fetch(`/api/workspace/tree?projectId=${projectId}`, {
@@ -399,7 +423,10 @@ export function ProjectWorkspace({
                   <li key={s.id}>
                     <button
                       type="button"
-                      onClick={() => setActiveId(s.id)}
+                      onClick={() => {
+                        setActiveId(s.id);
+                        setChatVisibleCount(CHAT_INITIAL_VISIBLE);
+                      }}
                       className={`w-full rounded px-2 py-1 text-left text-sm ${
                         s.id === activeId ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
                       }`}
@@ -412,7 +439,18 @@ export function ProjectWorkspace({
             </div>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-slate-800 bg-black/20">
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 text-sm">
-                {active?.messages.map((m) => (
+                {allChatMessages.length > visibleChatMessages.length && (
+                  <div className="sticky top-0 z-10 -mx-2 mb-2 flex justify-center px-2">
+                    <button
+                      type="button"
+                      onClick={loadEarlierChatMessages}
+                      className="rounded-full border border-slate-600 bg-slate-900/95 px-4 py-1.5 text-xs text-blue-200 shadow-md hover:bg-slate-800"
+                    >
+                      Найти более ранние сообщения
+                    </button>
+                  </div>
+                )}
+                {visibleChatMessages.map((m) => (
                   <div
                     key={m.id}
                     className={
@@ -491,9 +529,9 @@ export function ProjectWorkspace({
         )}
 
         {tab === "files" && (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[360px_1fr]">
-              <div className="min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:grid-rows-1">
+              <div className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20">
                 <div className="border-b border-slate-800 px-3 py-2 text-xs text-slate-400">
                   Workspace: <span className="font-mono text-slate-300">{workspacePath}</span>
                 </div>
@@ -527,7 +565,7 @@ export function ProjectWorkspace({
                 </div>
               </div>
 
-              <div className="min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
+              <div className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4">
                 {!selectedFile ? (
                   <div className="text-sm text-slate-500">Выберите файл слева.</div>
                 ) : fileLoading ? (
@@ -540,7 +578,21 @@ export function ProjectWorkspace({
                       Файл: <span className="font-mono text-slate-200">{selectedFile}</span>
                     </div>
                     {selectedExt === "md" ? (
-                      <div className="prose prose-invert max-w-none">
+                      <div
+                        className={
+                          "max-w-none text-slate-200 " +
+                          "[&_h1]:mb-3 [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-white " +
+                          "[&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-slate-100 " +
+                          "[&_h3]:mb-2 [&_h3]:mt-2 [&_h3]:text-base [&_h3]:font-medium " +
+                          "[&_p]:mb-2 [&_p]:leading-relaxed " +
+                          "[&_a]:text-blue-400 [&_a]:underline hover:[&_a]:text-blue-300 " +
+                          "[&_code]:rounded [&_code]:bg-slate-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm [&_code]:text-amber-100 " +
+                          "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-3 [&_pre]:text-sm " +
+                          "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 " +
+                          "[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-600 [&_blockquote]:pl-3 [&_blockquote]:text-slate-400 " +
+                          "[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-slate-700 [&_th]:bg-slate-800 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-slate-700 [&_td]:px-2 [&_td]:py-1"
+                        }
+                      >
                         <ReactMarkdown>{fileContent}</ReactMarkdown>
                       </div>
                     ) : (

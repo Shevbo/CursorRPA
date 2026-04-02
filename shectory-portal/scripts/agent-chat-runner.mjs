@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
+import { notifyPortalUser } from "./lib/portal-notify.mjs";
 
 const prisma = new PrismaClient();
 
@@ -77,10 +78,11 @@ function augmentUserContent(content, attachmentsJson) {
 }
 
 async function main() {
-  const [sessionId, workspacePath, payloadArg, timeoutStr] = process.argv.slice(2);
+  const [sessionId, workspacePath, payloadArg, timeoutStr, notifyUserIdRaw] = process.argv.slice(2);
   if (!sessionId || !workspacePath || !payloadArg) {
-    throw new Error("Usage: agent-chat-runner.mjs <sessionId> <workspacePath> <payload> [timeoutMs]");
+    throw new Error("Usage: agent-chat-runner.mjs <sessionId> <workspacePath> <payload> [timeoutMs] [notifyUserId]");
   }
+  const notifyUserId = String(notifyUserIdRaw || "").trim();
   const timeoutMs = Number(timeoutStr || process.env.AGENT_PROMPT_TIMEOUT_MS || "1800000") || 1_800_000;
 
   const sess = await prisma.chatSession.findUnique({ where: { id: sessionId }, select: { isStopped: true } });
@@ -116,9 +118,23 @@ async function main() {
     return;
   }
 
-  await prisma.chatMessage.create({
+  const processingMsg = await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
   });
+
+  // Heartbeat: update the processing message timestamp so UI can detect live activity
+  let heartbeatStopped = false;
+  const heartbeatInterval = setInterval(async () => {
+    if (heartbeatStopped) return;
+    try {
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: { updatedAt: new Date() },
+      });
+    } catch {
+      // ignore
+    }
+  }, 15000);
 
   const tailDesc = await prisma.chatMessage.findMany({
     where: { sessionId },
@@ -161,13 +177,33 @@ async function main() {
     timeoutMs,
     EXECUTOR_MODEL_ID
   );
+  heartbeatStopped = true;
+  clearInterval(heartbeatInterval);
+
   const reply = (ok ? stdout : stderr || stdout).trim() || "(пустой ответ agent)";
 
-  await prisma.chatMessage.create({
-    data: { sessionId, role: "assistant", content: reply },
+  // Replace the ⏳ processing placeholder with the actual reply
+  await prisma.chatMessage.update({
+    where: { id: processingMsg.id },
+    data: { content: reply },
   });
 
   await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+
+  if (notifyUserId) {
+    const meta = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: { backlogItemId: true, project: { select: { slug: true } } },
+    });
+    if (meta?.backlogItemId && meta.project?.slug) {
+      await notifyPortalUser(prisma, notifyUserId, {
+        kind: "backlog_chat_idle",
+        title: "Тикет: агент в режиме ожидания",
+        body: "Фоновый ответ в чате тикета готов. Можно вернуться к переписке.",
+        href: `/projects/${meta.project.slug}/backlog/${meta.backlogItemId}`,
+      });
+    }
+  }
 }
 
 main()
@@ -175,14 +211,35 @@ main()
   .catch(async (e) => {
     try {
       const sessionId = process.argv[2];
+      const notifyUserId = String(process.argv[6] || "").trim();
       if (sessionId) {
-        await prisma.chatMessage.create({
-          data: {
-            sessionId,
-            role: "assistant",
-            content: `Ошибка фонового агента: ${e instanceof Error ? e.message : String(e)}`,
-          },
+        // Try to replace the ⏳ processing message with the error
+        const errContent = `Ошибка фонового агента: ${e instanceof Error ? e.message : String(e)}`;
+        const stuck = await prisma.chatMessage.findFirst({
+          where: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
+          orderBy: { createdAt: "desc" },
         });
+        if (stuck) {
+          await prisma.chatMessage.update({ where: { id: stuck.id }, data: { content: errContent } });
+        } else {
+          await prisma.chatMessage.create({
+            data: { sessionId, role: "assistant", content: errContent },
+          });
+        }
+        if (notifyUserId) {
+          const meta = await prisma.chatSession.findUnique({
+            where: { id: sessionId },
+            select: { backlogItemId: true, project: { select: { slug: true } } },
+          });
+          if (meta?.backlogItemId && meta.project?.slug) {
+            await notifyPortalUser(prisma, notifyUserId, {
+              kind: "backlog_chat_failed",
+              title: "Тикет: ошибка фонового агента",
+              body: e instanceof Error ? e.message : String(e),
+              href: `/projects/${meta.project.slug}/backlog/${meta.backlogItemId}`,
+            });
+          }
+        }
       }
     } catch {
       // ignore

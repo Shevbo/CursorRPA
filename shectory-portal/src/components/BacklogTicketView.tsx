@@ -24,7 +24,6 @@ import {
   stripTicketContextRefreshTag,
   userRequestedTicketContextRefresh,
 } from "@/lib/ticket-chat-context";
-import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import { CHAT_ATTACHMENT_MAX_FILES } from "@/lib/chat-attachments";
 import type { AgentRun, AgentRunStep } from "@prisma/client";
 
@@ -221,7 +220,12 @@ export function BacklogTicketView({
     if (msgs.length === 0) return "idle";
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
-    if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
+    if (looksLikeAssistantBusy(last.content ?? "")) {
+      // If the ⏳ processing message is older than 10 minutes, treat as stale/idle
+      const age = Date.now() - new Date((last as { createdAt: string | Date }).createdAt).getTime();
+      if (age > 10 * 60 * 1000) return "idle";
+      return "thinking";
+    }
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
@@ -229,6 +233,7 @@ export function BacklogTicketView({
   }, [session?.messages]);
 
   const agentPresence = useMemo((): ChatAgentPresence => {
+    if (session?.isStopped) return "idle";
     if (run?.status === "failed") return "error";
     const orchBusy =
       startPending || (run && (run.status === "running" || run.status === "queued"));
@@ -241,7 +246,7 @@ export function BacklogTicketView({
       return iframeChatSync.chatAgentPresence;
     }
     return sessionDerivedPresence;
-  }, [run, startPending, loadingChat, cmdRunning, generating, promptRun, iframeChatSync, sessionDerivedPresence]);
+  }, [session?.isStopped, run, startPending, loadingChat, cmdRunning, generating, promptRun, iframeChatSync, sessionDerivedPresence]);
 
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
@@ -478,7 +483,7 @@ export function BacklogTicketView({
               ...prev,
               note: j.stopped ? "Процесс остановлен." : (j.message ?? "Запрос обработан."),
             }
-          : prev
+          : { note: j.stopped ? "Процесс остановлен." : (j.message ?? "Запрос обработан.") }
       );
       await reload();
     } catch (e) {
@@ -646,12 +651,13 @@ export function BacklogTicketView({
       } catch {
         /* ignore */
       }
-      const uid = j.userMsg?.id;
-      if (uid) {
-        const t = (j.timeoutMs ?? 1_800_000) + 120_000;
-        await waitForAssistantAfterUserMessage(session.id, uid, { timeoutMs: t });
+      void reload();
+      if (!inSprint && j.userMsg?.id) {
+        setStartInfo((prev) => ({
+          ...(prev || {}),
+          note: "Сообщение принято; агент отвечает в фоне. Уведомление — в колокольчике справа вверху.",
+        }));
       }
-      await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1003,10 +1009,25 @@ export function BacklogTicketView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-x border-slate-800 bg-black/20">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 px-2 py-1.5">
           <span className="text-sm font-medium text-white">Чат с агентом</span>
-          {agentWaiting ? (
+          {session?.isStopped ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-red-700/50 bg-red-950/50 px-2 py-0.5 text-[10px] text-red-200">
+              <span className="size-1 rounded-full bg-red-400" aria-hidden />
+              Остановлен
+            </span>
+          ) : agentWaiting ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-amber-600/50 bg-amber-950/50 px-2 py-0.5 text-[10px] text-amber-100">
               <span className="size-1 animate-pulse rounded-full bg-amber-400" aria-hidden />
               Ждёт ответа
+            </span>
+          ) : agentPresence === "thinking" ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-blue-700/50 bg-blue-950/50 px-2 py-0.5 text-[10px] text-blue-200">
+              <span className="size-1 animate-pulse rounded-full bg-blue-400" aria-hidden />
+              Думает…
+            </span>
+          ) : null}
+          {session?.updatedAt && agentPresence === "thinking" && !session.isStopped ? (
+            <span className="text-[10px] text-slate-500" title="Последний пульс от агента">
+              пульс: {new Date(session.updatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
           ) : null}
           <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500">
@@ -1073,9 +1094,9 @@ export function BacklogTicketView({
           <button
             type="button"
             className="pointer-events-auto absolute bottom-1.5 right-[17px] z-10 flex size-[22px] shrink-0 items-center justify-center rounded border border-red-800/80 bg-red-950/85 text-red-200 shadow-sm hover:bg-red-900/80 disabled:opacity-30"
-            disabled={!session?.id}
+            disabled={!session?.id || session.isStopped === true}
             onClick={() => void stopOrchestrator()}
-            title="Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."
+            title={session?.isStopped ? "Агент уже остановлен. Нажмите «Перезапустить агента» для возобновления." : "Остановить фонового оркестратора (после «Запустить в работу»). Сообщения из поля ввода ниже не отменяет."}
             aria-label="Остановить работу агента"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-[14px]" aria-hidden>
@@ -1168,6 +1189,11 @@ export function BacklogTicketView({
                 Последняя команда завершилась ошибкой (exit_code ≠ 0). Агент должен продолжать исправлять до успеха.
               </div>
             ) : null}
+            {session?.isStopped ? (
+              <div className="mb-1 shrink-0 rounded border border-amber-900/60 bg-amber-900/10 px-2 py-1.5 text-[11px] text-amber-200">
+                Сессия остановлена. Нажмите «Перезапустить агента» в разделе «Управление», чтобы возобновить работу.
+              </div>
+            ) : null}
             <p className="mb-1 shrink-0 text-[10px] leading-snug text-slate-500">
               Первое сообщение — полный контекст тикета; дальше только ваш текст. Тег{" "}
               <span className="font-mono text-slate-400">[обновить контекст]</span> — снова отправить поля. Скрепка и{" "}
@@ -1209,7 +1235,7 @@ export function BacklogTicketView({
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <textarea
                   className="min-h-0 min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
-                  placeholder="Сообщение агенту…"
+                  placeholder={session?.isStopped ? "Сессия остановлена — перезапустите агента" : "Сообщение агенту…"}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onPaste={onTicketChatPaste}
@@ -1219,7 +1245,7 @@ export function BacklogTicketView({
                       void sendToAgent();
                     }
                   }}
-                  disabled={loadingChat || !session?.id}
+                  disabled={loadingChat || !session?.id || session.isStopped === true}
                 />
                 <ChatPaperclipAttach
                   className="pointer-events-auto absolute bottom-1 right-1 z-10"
@@ -1247,7 +1273,7 @@ export function BacklogTicketView({
                   type="button"
                   className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                   disabled={
-                    loadingChat || !session?.id || (!chatInput.trim() && pendingChatFiles.length === 0)
+                    loadingChat || !session?.id || session.isStopped === true || (!chatInput.trim() && pendingChatFiles.length === 0)
                   }
                   onClick={() => void sendToAgent()}
                 >

@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { ClipboardEvent } from "react";
 import { CHAT_ATTACHMENT_MAX_FILES, parseChatAttachmentsJson } from "@/lib/chat-attachments";
 import { useSearchParams } from "next/navigation";
-import { waitForAssistantAfterUserMessage } from "@/lib/wait-agent-reply";
 import {
   CHAT_POST_MESSAGE_TYPE,
   CHAT_SCROLL_TO_BOTTOM_TYPE,
@@ -24,6 +23,7 @@ import {
   userRequestedTicketContextRefresh,
 } from "@/lib/ticket-chat-context";
 import { formatMsgTime } from "@/lib/format-utils";
+import { NotificationBell } from "@/components/NotificationBell";
 
 type Msg = { id: string; role: string; content: string; createdAt: string; attachmentsJson?: string | null };
 type Session = { id: string; title?: string; messages: Msg[] };
@@ -91,7 +91,11 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     if (msgs.length === 0) return "idle";
     const last = msgs[msgs.length - 1]!;
     if (last.role === "user") return "thinking";
-    if (looksLikeAssistantBusy(last.content ?? "")) return "thinking";
+    if (looksLikeAssistantBusy(last.content ?? "")) {
+      const age = Date.now() - new Date(last.createdAt).getTime();
+      if (age > 10 * 60 * 1000) return "idle";
+      return "thinking";
+    }
     if (looksLikeCommandFailure(last.content ?? "")) return "error";
     if (looksLikeAssistantFailure(last.content ?? "")) return "error";
     if ((last.content ?? "").trimStart().startsWith("🕵️ Аудитор:")) return "auditing";
@@ -388,12 +392,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       };
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setPendingFiles([]);
-      const uid = j.userMsg?.id;
       stickBottomRef.current = true;
-      if (uid) {
-        const t = (j.timeoutMs ?? 1_800_000) + 120_000;
-        await waitForAssistantAfterUserMessage(sessionId, uid, { timeoutMs: t });
-      }
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -406,9 +405,12 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {!embedThread ? (
         <>
-          <div className="shrink-0 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
-            Чат тикета · {params.slug}/{ticketLabel}
-            {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
+            <span>
+              Чат тикета · {params.slug}/{ticketLabel}
+              {sessionId ? ` · сессия ${sessionId.slice(0, 8)}` : " · сессия —"}
+            </span>
+            <NotificationBell />
           </div>
           {err ? <div className="shrink-0 px-3 py-2 text-xs text-red-400">{err}</div> : null}
         </>

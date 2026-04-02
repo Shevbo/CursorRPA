@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { portalUserIdFromRequest } from "@/lib/portal-auth";
 import { prisma } from "@/lib/prisma";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -89,7 +90,9 @@ export async function POST(req: Request, { params }: Ctx) {
   });
 
   const runnerPath = path.join(process.cwd(), "scripts", "agent-runner.mjs");
-  const child = spawn(process.execPath, [runnerPath, run.id], { detached: true, stdio: "ignore" });
+  const notifyUserId = (await portalUserIdFromRequest(req)) ?? "";
+  const runnerArgs = notifyUserId ? [runnerPath, run.id, notifyUserId] : [runnerPath, run.id];
+  const child = spawn(process.execPath, runnerArgs, { detached: true, stdio: "ignore" });
   child.unref();
 
   return NextResponse.json({ ok: true, async: true, runId: run.id, run }, { status: 202 });

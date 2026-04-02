@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { portalUserIdFromRequest } from "@/lib/portal-auth";
 import { prisma } from "@/lib/prisma";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -47,7 +48,18 @@ export async function POST(req: Request, { params }: Ctx) {
       orderBy: { updatedAt: "desc" },
       include: { messages: { orderBy: { createdAt: "asc" } } },
     });
-    if (existing) return { session: existing, createdNow: false };
+    if (existing) {
+      // Reset isStopped so new messages can be sent and stop button works again
+      if (existing.isStopped) {
+        const updated = await tx.chatSession.update({
+          where: { id: existing.id },
+          data: { isStopped: false, stoppedAt: null },
+          include: { messages: { orderBy: { createdAt: "asc" } } },
+        });
+        return { session: updated, createdNow: false };
+      }
+      return { session: existing, createdNow: false };
+    }
 
     const title = item.ticketKey ? `Ticket ${item.ticketKey}` : `Ticket ${item.id.slice(0, 8)}`;
     const created = await tx.chatSession.create({
@@ -115,7 +127,9 @@ export async function POST(req: Request, { params }: Ctx) {
 
     // Run the agent-runner in a detached process; it writes progress to AgentRunEvent.
     const runnerPath = path.join(process.cwd(), "scripts", "agent-runner.mjs");
-    const child = spawn(process.execPath, [runnerPath, run.id], { detached: true, stdio: "ignore" });
+    const notifyUserId = (await portalUserIdFromRequest(req)) ?? "";
+    const runnerArgs = notifyUserId ? [runnerPath, run.id, notifyUserId] : [runnerPath, run.id];
+    const child = spawn(process.execPath, runnerArgs, { detached: true, stdio: "ignore" });
     child.unref();
 
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { portalUserIdFromRequest } from "@/lib/portal-auth";
 import { getAgentPromptTimeoutMs } from "@/lib/agent-timeout";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -53,14 +54,18 @@ async function writeSessionAttachments(
   return out;
 }
 
-async function enqueueAgentChat(project: Project, sessionId: string, userMsgId: string) {
+async function enqueueAgentChat(
+  project: Project,
+  sessionId: string,
+  userMsgId: string,
+  opts?: { notifyUserId?: string | null }
+) {
   const runnerPath = path.join(process.cwd(), "scripts", "agent-chat-runner.mjs");
   const payload = `msg:${userMsgId}`;
-  const child = spawn(
-    process.execPath,
-    [runnerPath, sessionId, project.workspacePath, payload, String(getAgentPromptTimeoutMs())],
-    { detached: true, stdio: "ignore" }
-  );
+  const args = [runnerPath, sessionId, project.workspacePath, payload, String(getAgentPromptTimeoutMs())];
+  const nuid = opts?.notifyUserId?.trim();
+  if (nuid) args.push(nuid);
+  const child = spawn(process.execPath, args, { detached: true, stdio: "ignore" });
   child.unref();
 }
 
@@ -175,7 +180,8 @@ export async function POST(req: Request) {
     }
   }
 
-  await enqueueAgentChat(project, sessionId, userMsg.id);
+  const notifyUserId = (await portalUserIdFromRequest(req)) ?? undefined;
+  await enqueueAgentChat(project, sessionId, userMsg.id, { notifyUserId });
 
   const userMsgOut = { ...userMsg, attachmentsJson };
 

@@ -15,12 +15,16 @@ import time
 import shutil
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv  # type: ignore
+except Exception:
+    load_dotenv = None
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-load_dotenv()
+if load_dotenv is not None:
+    load_dotenv()
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -72,13 +76,19 @@ TELEGRAM_DISABLE_AGENT_PREAMBLE = os.environ.get("TELEGRAM_DISABLE_AGENT_PREAMBL
 )
 
 # Health monitoring / notifications
-HEALTH_CHECK_INTERVAL_SEC = int(os.environ.get("HEALTH_CHECK_INTERVAL_SEC", "60"))
-HEALTH_REPORT_INTERVAL_SEC = int(os.environ.get("HEALTH_REPORT_INTERVAL_SEC", str(60 * 60)))
+# По умолчанию: проверка каждые 5 минут + регулярный отчёт каждые 5 минут.
+HEALTH_CHECK_INTERVAL_SEC = int(os.environ.get("HEALTH_CHECK_INTERVAL_SEC", str(5 * 60)))
+HEALTH_REPORT_INTERVAL_SEC = int(os.environ.get("HEALTH_REPORT_INTERVAL_SEC", str(5 * 60)))
 HEALTH_RAM_CRIT_FREE_PCT = float(os.environ.get("HEALTH_RAM_CRIT_FREE_PCT", "8"))   # free% below => critical
 HEALTH_HDD_CRIT_FREE_PCT = float(os.environ.get("HEALTH_HDD_CRIT_FREE_PCT", "5"))   # free% below => critical
 
-# Raspberry Pi: Syslog (4444), Pingmaster (4555); отчёт раз в PI_MONITOR_INTERVAL_SEC (по умолчанию 5 мин)
+# Raspberry Pi: health + TCP checks (Syslog 4444, Pingmaster 4555)
+# Проверка каждые PI_MONITOR_INTERVAL_SEC (по умолчанию 5 мин).
+# Регулярный отчёт раз в PI_MONITOR_REPORT_INTERVAL_SEC (по умолчанию 1 час).
+# Список хостов для TCP-проверок: PI_MONITOR_HOSTS="192.168.1.105,shectory.ru" (back-compat: PI_MONITOR_HOST).
 PI_MONITOR_HOST = os.environ.get("PI_MONITOR_HOST", "").strip()
+PI_MONITOR_HOSTS_RAW = os.environ.get("PI_MONITOR_HOSTS", "").strip()
+PI_MONITOR_REPORT_INTERVAL_SEC = int(os.environ.get("PI_MONITOR_REPORT_INTERVAL_SEC", str(60 * 60)))
 PI_SYSLOG_PORT = int(os.environ.get("PI_SYSLOG_PORT", "4444"))
 PI_PINGMASTER_PORT = int(os.environ.get("PI_PINGMASTER_PORT", "4555"))
 PI_MONITOR_INTERVAL_SEC = int(os.environ.get("PI_MONITOR_INTERVAL_SEC", str(5 * 60)))
@@ -243,6 +253,22 @@ def _health_text_hoster(h: dict, db: dict) -> str:
     )
 
 
+def _health_text_pi(pi: dict) -> str:
+    if pi.get("skipped"):
+        return "Pi health: SSH не задан (PI_MONITOR_SSH) — метрики Pi пропущены."
+    if not pi.get("ok"):
+        return f"Pi health: DOWN ({pi.get('error','')})"
+    cpu = pi.get("cpu", {})
+    ram = pi.get("ram", {})
+    hdd = pi.get("hdd", {})
+    return (
+        f"Pi health: ok\n"
+        f"CPU load: {cpu.get('load1',0):.2f}/{cpu.get('load5',0):.2f}/{cpu.get('load15',0):.2f}\n"
+        f"RAM free: {_fmt_pct(float(ram.get('free_pct',0.0)))}\n"
+        f"HDD free: {_fmt_pct(float(hdd.get('free_pct',0.0)))}"
+    )
+
+
 def _ssh_pi_health() -> dict:
     """Снимок CPU/RAM/диска на Pi по SSH (PI_MONITOR_SSH)."""
     if not PI_MONITOR_SSH:
@@ -343,70 +369,172 @@ def _pi_monitor_format_message(
 
 
 async def _pi_monitor_loop(application: Application) -> None:
-    """Периодический отчёт о Pi + всплеск алертов при падении/восстановлении портов."""
-    if not PI_MONITOR_HOST:
+    """Проверка Pi каждые 5 минут + отчёт раз в час + алерты на переходах (без спама)."""
+    hosts: list[str] = []
+    if PI_MONITOR_HOSTS_RAW:
+        hosts = [h.strip() for h in PI_MONITOR_HOSTS_RAW.split(",") if h.strip()]
+    elif PI_MONITOR_HOST:
+        hosts = [PI_MONITOR_HOST]
+    if not hosts:
         return
     if not ALLOWED:
-        log.info("Pi monitor: PI_MONITOR_HOST задан, но ALLOWED пуст — мониторинг не шлём")
+        log.info("Pi monitor: hosts заданы, но ALLOWED пуст — мониторинг не шлём")
         return
     log.info(
-        "Pi monitor: TCP %s:%s %s:%s, интервал %ss",
-        PI_MONITOR_HOST,
+        "Pi monitor: TCP hosts=%s syslog=%s pingmaster=%s, check=%ss report=%ss",
+        ",".join(hosts),
         PI_SYSLOG_PORT,
-        PI_MONITOR_HOST,
         PI_PINGMASTER_PORT,
         PI_MONITOR_INTERVAL_SEC,
+        PI_MONITOR_REPORT_INTERVAL_SEC,
     )
     await asyncio.sleep(10)
     while True:
         try:
-            syslog_ok, syslog_err = await _tcp_port_open(
-                PI_MONITOR_HOST, PI_SYSLOG_PORT, PI_MONITOR_TCP_TIMEOUT
-            )
-            ping_ok, ping_err = await _tcp_port_open(
-                PI_MONITOR_HOST, PI_PINGMASTER_PORT, PI_MONITOR_TCP_TIMEOUT
-            )
+            # TCP checks (prefer from inside Pi via SSH; fallback: from bot host).
+            # We represent unknown as (None, reason) to avoid false "DOWN" spam when SSH is unavailable.
+            svc: dict[str, dict[str, tuple[bool | None, str]]] = {}
+            svc_source = "monitor_host"
+            if PI_MONITOR_SSH:
+                try:
+                    import json
+
+                    remote_py = (
+                        "python3 - <<'PY'\n"
+                        "import json, socket\n"
+                        "hosts = json.loads('''" + json.dumps(hosts, ensure_ascii=False) + "''')\n"
+                        f"syslog_port = int({PI_SYSLOG_PORT})\n"
+                        f"ping_port = int({PI_PINGMASTER_PORT})\n"
+                        f"timeout = float({PI_MONITOR_TCP_TIMEOUT})\n"
+                        "def chk(host, port):\n"
+                        "  try:\n"
+                        "    s = socket.create_connection((host, port), timeout=timeout)\n"
+                        "    s.close()\n"
+                        "    return True, 'ok'\n"
+                        "  except Exception as e:\n"
+                        "    msg = str(e)\n"
+                        "    return False, (msg[:120] if msg else 'fail')\n"
+                        "out = {}\n"
+                        "for h in hosts:\n"
+                        "  sys_ok, sys_err = chk(h, syslog_port)\n"
+                        "  ping_ok, ping_err = chk(h, ping_port)\n"
+                        "  out[h] = {'syslog': [sys_ok, sys_err], 'pingmaster': [ping_ok, ping_err]}\n"
+                        "print(json.dumps(out, ensure_ascii=False))\n"
+                        "PY"
+                    )
+                    rc, stdout, stderr = _run_bash(
+                        f"{PI_MONITOR_SSH} {shlex.quote(remote_py)}",
+                        timeout_sec=max(6, PI_MONITOR_SSH_TIMEOUT_SEC),
+                    )
+                    if rc == 0:
+                        import json as _json
+
+                        j = _json.loads((stdout or "").strip() or "{}")
+                        if isinstance(j, dict):
+                            for h in hosts:
+                                row = j.get(h) if isinstance(j.get(h), dict) else {}
+                                a = row.get("syslog") if isinstance(row.get("syslog"), list) else None
+                                b = row.get("pingmaster") if isinstance(row.get("pingmaster"), list) else None
+                                sys_ok = bool(a[0]) if (isinstance(a, list) and len(a) >= 1) else None
+                                sys_err = str(a[1]) if (isinstance(a, list) and len(a) >= 2) else "?"
+                                ping_ok = bool(b[0]) if (isinstance(b, list) and len(b) >= 1) else None
+                                ping_err = str(b[1]) if (isinstance(b, list) and len(b) >= 2) else "?"
+                                svc[h] = {"syslog": (sys_ok, sys_err), "pingmaster": (ping_ok, ping_err)}
+                            svc_source = "pi_ssh"
+                        else:
+                            raise RuntimeError("bad_json")
+                    else:
+                        raise RuntimeError((stderr or stdout or f"rc={rc}").strip()[:200])
+                except Exception as e:
+                    # SSH failed; mark all as unknown to avoid misleading DOWN statuses.
+                    reason = f"ssh_unavailable: {e!s}"[:200]
+                    for h in hosts:
+                        svc[h] = {"syslog": (None, reason), "pingmaster": (None, reason)}
+                    svc_source = "ssh_failed"
+            else:
+                for h in hosts:
+                    sys_ok, sys_err = await _tcp_port_open(h, PI_SYSLOG_PORT, PI_MONITOR_TCP_TIMEOUT)
+                    ping_ok, ping_err = await _tcp_port_open(h, PI_PINGMASTER_PORT, PI_MONITOR_TCP_TIMEOUT)
+                    svc[h] = {"syslog": (sys_ok, sys_err), "pingmaster": (ping_ok, ping_err)}
+
             loop = asyncio.get_event_loop()
             pi_res: dict = await loop.run_in_executor(None, _ssh_pi_health)
 
             state = _load_state()
-            prev_sys = state.get("pi_mon_syslog_ok")
-            prev_ping = state.get("pi_mon_ping_ok")
             alerts: list[str] = []
-            if prev_sys is True and not syslog_ok:
-                alerts.append(f"🚨 СБОЙ: Syslog :{PI_SYSLOG_PORT} не отвечает.")
-            if prev_ping is True and not ping_ok:
-                alerts.append(f"🚨 СБОЙ: Pingmaster :{PI_PINGMASTER_PORT} не отвечает.")
-            if prev_sys is False and syslog_ok:
-                alerts.append("✅ Syslog снова доступен.")
-            if prev_ping is False and ping_ok:
-                alerts.append("✅ Pingmaster снова доступен.")
+            prev_map = state.get("pi_mon_prev") or {}
+            cur_map: dict[str, str] = {}
 
-            state["pi_mon_syslog_ok"] = syslog_ok
-            state["pi_mon_ping_ok"] = ping_ok
+            # Detect transitions per host/service; alert only on change (no spam).
+            for h in hosts:
+                sys_ok, _ = svc[h]["syslog"]
+                ping_ok, _ = svc[h]["pingmaster"]
+                k1 = f"{h}:syslog:{PI_SYSLOG_PORT}"
+                k2 = f"{h}:pingmaster:{PI_PINGMASTER_PORT}"
+                cur_map[k1] = "u" if sys_ok is None else ("1" if sys_ok else "0")
+                cur_map[k2] = "u" if ping_ok is None else ("1" if ping_ok else "0")
+                if k1 in prev_map and prev_map.get(k1) == "1" and sys_ok is False:
+                    alerts.append(f"🚨 СБОЙ: Syslog http://{h}:{PI_SYSLOG_PORT} не отвечает.")
+                if k2 in prev_map and prev_map.get(k2) == "1" and ping_ok is False:
+                    alerts.append(f"🚨 СБОЙ: PingMaster http://{h}:{PI_PINGMASTER_PORT} не отвечает.")
+                # Recovery notifications are helpful and also non-spam (on transition)
+                if k1 in prev_map and prev_map.get(k1) == "0" and sys_ok is True:
+                    alerts.append(f"✅ Syslog снова доступен: http://{h}:{PI_SYSLOG_PORT}")
+                if k2 in prev_map and prev_map.get(k2) == "0" and ping_ok is True:
+                    alerts.append(f"✅ PingMaster снова доступен: http://{h}:{PI_PINGMASTER_PORT}")
+
+            state["pi_mon_prev"] = cur_map
+
+            # Regular report (hourly by default)
+            now_ts = time.time()
+            last_report = float(state.get("pi_mon_last_report_ts") or 0.0)
+            need_report = (now_ts - last_report) >= max(60.0, float(PI_MONITOR_REPORT_INTERVAL_SEC))
+            if need_report:
+                lines: list[str] = [
+                    f"📟 Raspberry Pi · health (проверка каждые {max(1, PI_MONITOR_INTERVAL_SEC // 60)} мин; отчёт каждые {max(1, PI_MONITOR_REPORT_INTERVAL_SEC // 60)} мин)",
+                    "",
+                    _health_text_pi(pi_res),
+                    "",
+                    f"Сервисы (TCP) [{svc_source}]:",
+                ]
+                for h in hosts:
+                    sys_ok, sys_err = svc[h]["syslog"]
+                    ping_ok, ping_err = svc[h]["pingmaster"]
+                    sys_url = f"http://{h}:{PI_SYSLOG_PORT}"
+                    ping_url = f"http://{h}:{PI_PINGMASTER_PORT}"
+                    if sys_ok is None:
+                        lines.append(f"- Syslog {sys_url} — ⚠️ unknown ({sys_err})")
+                    else:
+                        lines.append(f"- Syslog {sys_url} — {'✅ OK' if sys_ok else f'❌ ({sys_err})'}")
+                    if ping_ok is None:
+                        lines.append(f"- PingMaster {ping_url} — ⚠️ unknown ({ping_err})")
+                    else:
+                        lines.append(f"- PingMaster {ping_url} — {'✅ OK' if ping_ok else f'❌ ({ping_err})'}")
+                text = "\n".join(lines)
+                for admin_id in sorted(ALLOWED):
+                    try:
+                        await application.bot.send_message(chat_id=admin_id, text=text)
+                    except Exception as e:
+                        log.warning("pi monitor report send failed admin_id=%s: %s", admin_id, e)
+                state["pi_mon_last_report_ts"] = now_ts
+
+            # Instant alerts (only if any)
+            if alerts:
+                text = "\n".join(alerts)
+                for admin_id in sorted(ALLOWED):
+                    try:
+                        await application.bot.send_message(chat_id=admin_id, text=text)
+                    except Exception as e:
+                        log.warning("pi monitor alert send failed admin_id=%s: %s", admin_id, e)
+
             _save_state(state)
-
-            text = _pi_monitor_format_message(
-                PI_MONITOR_HOST,
-                pi_res,
-                syslog_ok,
-                syslog_err,
-                ping_ok,
-                ping_err,
-                alerts,
-            )
-            for admin_id in sorted(ALLOWED):
-                try:
-                    await application.bot.send_message(chat_id=admin_id, text=text)
-                except Exception as e:
-                    log.warning("pi monitor send failed admin_id=%s: %s", admin_id, e)
         except Exception as e:
             log.warning("pi monitor loop error: %s", e)
         await asyncio.sleep(PI_MONITOR_INTERVAL_SEC)
 
 
 async def _health_loop(application: Application) -> None:
-    """Hourly status + instant critical alerts (no spam within the hour)."""
+    """Regular status every HEALTH_REPORT_INTERVAL_SEC + instant alerts on state changes."""
     if not ALLOWED:
         return
     while True:
@@ -414,41 +542,70 @@ async def _health_loop(application: Application) -> None:
             snap = _health_snapshot()
             hoster = _ssh_hoster_health()
             db = _db_ready_via_hoster()
+            pi = _ssh_pi_health()
             state = _load_state()
-            hk = _hour_key()
 
-            last_hour = state.get("health_last_hour")
-            if last_hour != hk:
-                # hourly report
-                text = _health_text(snap) + "\n\n" + _health_text_hoster(hoster, db)
+            # Optional Pi service ports (Syslog/Pingmaster) for the same 5-min report.
+            syslog_ok = None
+            ping_ok = None
+            if PI_MONITOR_HOST:
+                syslog_ok, _ = await _tcp_port_open(PI_MONITOR_HOST, PI_SYSLOG_PORT, PI_MONITOR_TCP_TIMEOUT)
+                ping_ok, _ = await _tcp_port_open(PI_MONITOR_HOST, PI_PINGMASTER_PORT, PI_MONITOR_TCP_TIMEOUT)
+
+            # Regular report every HEALTH_REPORT_INTERVAL_SEC
+            last_report = float(state.get("health_last_report_ts") or 0.0)
+            now_ts = time.time()
+            if (now_ts - last_report) >= max(30.0, float(HEALTH_REPORT_INTERVAL_SEC)):
+                text = (
+                    f"✅ Health check (каждые {max(1, HEALTH_REPORT_INTERVAL_SEC // 60)} мин)\n\n"
+                    + _health_text_hoster(hoster, db)
+                    + "\n\n"
+                    + _health_text(snap)
+                    + "\n\n"
+                    + _health_text_pi(pi)
+                )
+                if PI_MONITOR_HOST and syslog_ok is not None and ping_ok is not None:
+                    text += (
+                        f"\n\nPi services ({PI_MONITOR_HOST}): "
+                        f"Syslog http://{PI_MONITOR_HOST}:{PI_SYSLOG_PORT} {('OK' if syslog_ok else 'DOWN')}, "
+                        f"Pingmaster http://{PI_MONITOR_HOST}:{PI_PINGMASTER_PORT} {('OK' if ping_ok else 'DOWN')}"
+                    )
                 for admin_id in sorted(ALLOWED):
                     try:
                         await application.bot.send_message(chat_id=admin_id, text=text)
                     except Exception as e:
-                        log.warning("health hourly send failed admin_id=%s: %s", admin_id, e)
-                state["health_last_hour"] = hk
-                # reset per-hour critical latch
-                state.pop("health_crit_sent_hour", None)
-                _save_state(state)
+                        log.warning("health report send failed admin_id=%s: %s", admin_id, e)
+                state["health_last_report_ts"] = now_ts
 
-            critical = snap.get("status") == "critical" or (not hoster.get("ok")) or (not db.get("ok")) or (
-                hoster.get("ok")
-                and (
-                    float(hoster.get("ram", {}).get("free_pct", 100.0)) < HEALTH_RAM_CRIT_FREE_PCT
-                    or float(hoster.get("hdd", {}).get("free_pct", 100.0)) < HEALTH_HDD_CRIT_FREE_PCT
-                )
-            )
-            if critical:
-                crit_hour = state.get("health_crit_sent_hour")
-                if crit_hour != hk:
-                    text = "CRITICAL!\n" + _health_text(snap) + "\n\n" + _health_text_hoster(hoster, db)
-                    for admin_id in sorted(ALLOWED):
-                        try:
-                            await application.bot.send_message(chat_id=admin_id, text=text)
-                        except Exception as e:
-                            log.warning("health critical send failed admin_id=%s: %s", admin_id, e)
-                    state["health_crit_sent_hour"] = hk
-                    _save_state(state)
+            # State-change alerts (down / recovered)
+            prev = state.get("health_prev") or {}
+            cur = {
+                "shectory_status": snap.get("status"),
+                "hoster_ok": bool(hoster.get("ok")),
+                "db_ok": bool(db.get("ok")),
+                "pi_ok": (None if pi.get("skipped") else bool(pi.get("ok"))),
+                "syslog_ok": syslog_ok,
+                "ping_ok": ping_ok,
+            }
+            changes: list[str] = []
+            for k, v in cur.items():
+                if prev.get(k) != v:
+                    # Only alert on meaningful transitions
+                    if k in ("hoster_ok", "db_ok", "pi_ok", "syslog_ok", "ping_ok"):
+                        if prev.get(k) is not None:
+                            changes.append(f"{k}: {prev.get(k)} → {v}")
+                    elif k == "shectory_status" and prev.get(k) is not None:
+                        changes.append(f"{k}: {prev.get(k)} → {v}")
+            if changes:
+                text = "🔔 Изменение health-состояния:\n" + "\n".join(f"- {x}" for x in changes)
+                for admin_id in sorted(ALLOWED):
+                    try:
+                        await application.bot.send_message(chat_id=admin_id, text=text)
+                    except Exception as e:
+                        log.warning("health change send failed admin_id=%s: %s", admin_id, e)
+                state["health_prev"] = cur
+
+            _save_state(state)
         except Exception as e:
             log.warning("health loop error: %s", e)
         await asyncio.sleep(HEALTH_CHECK_INTERVAL_SEC)
@@ -640,7 +797,7 @@ async def _post_init(application: Application) -> None:
 
     # фон: Shectory/hoster health + опционально Pi (Syslog/Pingmaster)
     asyncio.create_task(_health_loop(application))
-    if PI_MONITOR_HOST:
+    if PI_MONITOR_HOST or PI_MONITOR_HOSTS_RAW:
         asyncio.create_task(_pi_monitor_loop(application))
 
 
@@ -983,6 +1140,7 @@ def main() -> None:
     app.add_handler(CommandHandler("deploy_ui", cmd_deploy_ui))
     app.add_handler(CommandHandler("build_apk", cmd_build_apk))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    # Reliability is handled by systemd Restart=always in the unit.
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 

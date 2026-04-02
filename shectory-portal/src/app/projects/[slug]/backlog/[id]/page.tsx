@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { BacklogTicketView } from "@/components/BacklogTicketView";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,7 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
           <span className="text-slate-600">/</span>
           <span className="text-slate-300">{project.name}</span>
         </div>
+        <NotificationBell />
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden pb-[env(safe-area-inset-bottom)]">

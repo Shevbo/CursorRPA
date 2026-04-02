@@ -7,6 +7,8 @@ import { ProjectDescriptionEditor } from "@/components/ProjectDescriptionEditor"
 import { RefreshArchitectureButton } from "@/components/RefreshArchitectureButton";
 import { buildAdminAssistantPrompt } from "@/lib/admin-assistant-prompt";
 import { ProjectWorkspace } from "./ProjectWorkspace";
+import { NotificationBell } from "@/components/NotificationBell";
+import { ProjectDescriptionChecklist } from "@/components/ProjectDescriptionChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -36,16 +38,19 @@ export default async function ProjectPage({ params }: { params: { slug: string }
   return (
     <main className="mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden px-4 py-2">
       <div className="min-h-0 max-h-[33vh] shrink-0 overflow-y-auto overscroll-contain border-b border-slate-800 pb-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <Link href="/" className="text-sm text-blue-400 hover:underline">
-            ← Все проекты
-          </Link>
-          <Link
-            href={`/projects/${project.slug}/control`}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Панель управления
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/" className="text-sm text-blue-400 hover:underline">
+              ← Все проекты
+            </Link>
+            <Link
+              href={`/projects/${project.slug}/control`}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+            >
+              Панель управления
+            </Link>
+          </div>
+          <NotificationBell />
         </div>
 
         <section className="mt-4 grid gap-6 lg:grid-cols-3">
@@ -58,6 +63,13 @@ export default async function ProjectPage({ params }: { params: { slug: string }
               canEdit={canEditDescriptions}
               variant="full"
             />
+            <div className="mt-3">
+              <ProjectDescriptionChecklist
+                description={project.description}
+                uiUrl={project.uiUrl}
+                meta={meta}
+              />
+            </div>
             <div className="flex flex-wrap gap-2 text-sm text-slate-400">
               <span>workspace: {project.workspacePath}</span>
             </div>
@@ -212,13 +224,15 @@ export default async function ProjectPage({ params }: { params: { slug: string }
             </div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-            <h3 className="mb-3 text-sm font-medium text-slate-400">Архитектура (mind map)</h3>
+            <h3 className="mb-3 text-sm font-medium text-slate-400">
+              Архитектура (потоки данных, протоколы, узлы)
+            </h3>
             <MermaidBlock chart={project.architectureMermaid} />
           </div>
         </section>
       </div>
 
-      <header className="z-20 shrink-0 border-b border-slate-800 bg-slate-950 py-3 shadow-[0_6px_16px_rgba(0,0,0,0.35)] supports-[backdrop-filter]:bg-slate-950/90 supports-[backdrop-filter]:backdrop-blur-sm">
+      <header className="z-20 shrink-0 border-b border-slate-800 bg-slate-950/95 py-3 shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-sm">
         <h2 className="text-lg font-semibold text-white">Панель управления (workspace)</h2>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           {project.repoUrl && (

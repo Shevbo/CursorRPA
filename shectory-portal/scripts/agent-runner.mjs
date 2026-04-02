@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { runAgentPrompt } from "./lib/agent-cli.mjs";
 import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
+import { notifyPortalUser } from "./lib/portal-notify.mjs";
 
 const prisma = new PrismaClient();
 const WAITING_CODE = "[***waiting for answer***]";
@@ -157,9 +158,27 @@ function parseIntro(text) {
   return m ? m[1].trim() : "";
 }
 
+/**
+ * @param {import("@prisma/client").PrismaClient} prisma
+ * @param {string | null | undefined} notifyUserId
+ * @param {{ backlogItemId?: string | null; project?: { slug?: string | null } | null }} run
+ * @param {{ kind: string; title: string; body: string }} payload
+ */
+async function notifyBacklogTicket(prisma, notifyUserId, run, payload) {
+  const uid = String(notifyUserId || "").trim();
+  if (!uid || !run?.backlogItemId || !run?.project?.slug) return;
+  await notifyPortalUser(prisma, uid, {
+    kind: payload.kind,
+    title: payload.title,
+    body: payload.body,
+    href: `/projects/${run.project.slug}/backlog/${run.backlogItemId}`,
+  });
+}
+
 async function main() {
   const runId = process.argv[2];
-  if (!runId) throw new Error("Usage: agent-runner.mjs <runId>");
+  const notifyUserId = String(process.argv[3] || "").trim() || null;
+  if (!runId) throw new Error("Usage: agent-runner.mjs <runId> [notifyUserId]");
 
   const run = await prisma.agentRun.findUnique({
     where: { id: runId },
@@ -169,6 +188,12 @@ async function main() {
   if (!run.project?.workspacePath) throw new Error("Project workspacePath missing");
 
   if (run.status !== "queued") return;
+
+  // Check if session was stopped before we started
+  if (run.sessionId) {
+    const sess = await prisma.chatSession.findUnique({ where: { id: run.sessionId }, select: { isStopped: true } });
+    if (sess?.isStopped) return;
+  }
 
   await prisma.agentRun.update({ where: { id: runId }, data: { status: "running", startedAt: now() } });
   await emit(runId, "ack", "Задание принято в очередь");
@@ -208,6 +233,11 @@ async function main() {
         });
         await prisma.chatSession.update({ where: { id: run.sessionId }, data: { updatedAt: now() } });
       }
+      await notifyBacklogTicket(prisma, notifyUserId, run, {
+        kind: "backlog_engineering_prompt_failed",
+        title: "Тикет: ошибка генерации промпта",
+        body: "Генерация инженерного промпта завершилась ошибкой или таймаутом.",
+      });
       return;
     }
 
@@ -230,6 +260,11 @@ async function main() {
     await setStep(runId, step.index, { status: "done", finishedAt: now() });
     await prisma.agentRun.update({ where: { id: runId }, data: { status: "done", finishedAt: now() } });
     await emit(runId, "done", "Готово");
+    await notifyBacklogTicket(prisma, notifyUserId, run, {
+      kind: "backlog_engineering_prompt_done",
+      title: "Тикет: инженерный промпт готов",
+      body: "Поле «Промпт / ТЗ» обновлено. Можно запустить агента в работу.",
+    });
     return;
   }
 
@@ -239,6 +274,16 @@ async function main() {
 
   for (const step of run.steps) {
     if (step.status !== "pending") continue;
+
+    // Check stop flag between steps
+    if (run.sessionId) {
+      const sess = await prisma.chatSession.findUnique({ where: { id: run.sessionId }, select: { isStopped: true } });
+      if (sess?.isStopped) {
+        await prisma.agentRun.update({ where: { id: runId }, data: { status: "cancelled", finishedAt: now() } });
+        await emit(runId, "cancelled", "Остановлено по запросу пользователя");
+        return;
+      }
+    }
 
     await setStep(runId, step.index, { status: "running", startedAt: now() });
     await emit(runId, "step_started", step.title, { stepIndex: step.index, title: step.title });
@@ -283,6 +328,11 @@ async function main() {
       await setStep(runId, step.index, { status: "failed", finishedAt: now() });
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed", finishedAt: now() } });
       await emit(runId, "failed", "Шаг завершился ошибкой/таймаутом", { stepIndex: step.index });
+      await notifyBacklogTicket(prisma, notifyUserId, run, {
+        kind: "backlog_orchestrator_failed",
+        title: "Тикет: ошибка оркестратора",
+        body: `Шаг ${step.index}/5 завершился ошибкой или таймаутом. Откройте тикет для деталей.`,
+      });
       return;
     }
 
@@ -298,12 +348,22 @@ async function main() {
       });
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "waiting_user" } });
       await emit(runId, "waiting_user", "Ожидаю подтверждения команды в UI", { stepIndex: step.index });
+      await notifyBacklogTicket(prisma, notifyUserId, run, {
+        kind: "backlog_orchestrator_idle",
+        title: "Тикет: агент в режиме ожидания",
+        body: "Нужно подтвердить команду в Shell или продолжить из интерфейса тикета.",
+      });
       return;
     }
 
     if (looksLikeWaiting(out)) {
       await prisma.agentRun.update({ where: { id: runId }, data: { status: "waiting_user" } });
       await emit(runId, "waiting_user", "Агент ждёт ответа пользователя", { stepIndex: step.index });
+      await notifyBacklogTicket(prisma, notifyUserId, run, {
+        kind: "backlog_orchestrator_idle",
+        title: "Тикет: агент в режиме ожидания",
+        body: "Агент ждёт вашего ответа или уточнения в чате тикета.",
+      });
       return;
     }
 
@@ -326,6 +386,11 @@ async function main() {
 
   await prisma.agentRun.update({ where: { id: runId }, data: { status: "done", finishedAt: now() } });
   await emit(runId, "done", "Готово");
+  await notifyBacklogTicket(prisma, notifyUserId, run, {
+    kind: "backlog_orchestrator_done",
+    title: "Тикет: оркестратор завершил цикл",
+    body: "Текущий этап работы агента завершён. Откройте тикет при необходимости.",
+  });
 }
 
 main()
@@ -333,9 +398,21 @@ main()
   .catch(async (e) => {
     try {
       const runId = process.argv[2];
+      const notifyUserIdCatch = String(process.argv[3] || "").trim() || null;
       if (runId) {
         await emit(runId, "failed", e instanceof Error ? e.message : String(e));
         await prisma.agentRun.update({ where: { id: runId }, data: { status: "failed", finishedAt: now() } });
+        const run = await prisma.agentRun.findUnique({
+          where: { id: runId },
+          select: { backlogItemId: true, project: { select: { slug: true } }, kind: true },
+        });
+        if (run?.kind === "backlog_ticket_start" || run?.kind === "engineering_prompt") {
+          await notifyBacklogTicket(prisma, notifyUserIdCatch, run, {
+            kind: "backlog_orchestrator_failed",
+            title: "Тикет: сбой фонового агента",
+            body: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     } catch {
       // ignore

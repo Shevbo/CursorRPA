@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { BacklogPanel } from "@/components/BacklogPanel";
+import { NotificationBell } from "@/components/NotificationBell";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function ProjectControlPage({ params }: { params: { slug: s
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link href="/" className="text-sm text-blue-400 hover:underline">
             ← Все проекты
@@ -24,6 +25,7 @@ export default async function ProjectControlPage({ params }: { params: { slug: s
           <h1 className="mt-3 text-2xl font-bold text-white">Панель управления</h1>
           <p className="mt-1 text-slate-400">{project.name}</p>
         </div>
+        <NotificationBell />
       </div>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-5">

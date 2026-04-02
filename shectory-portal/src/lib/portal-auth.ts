@@ -241,6 +241,23 @@ export function isAdminSession(): boolean {
   return s?.role === "admin" || s?.role === "superadmin";
 }
 
+/** CUID пользователя портала для текущей админ-сессии (уведомления, аудит). */
+export async function portalUserIdFromRequest(req: Request): Promise<string | null> {
+  const s = currentPortalSessionFromRequest(req);
+  if (!s?.email) return null;
+  const email = normalizeEmail(s.email);
+  const u = await prisma.portalUser.findUnique({ where: { email }, select: { id: true } });
+  return u?.id ?? null;
+}
+
+export async function portalUserIdFromCookies(): Promise<string | null> {
+  const s = currentPortalSessionFromCookies();
+  if (!s?.email) return null;
+  const email = normalizeEmail(s.email);
+  const u = await prisma.portalUser.findUnique({ where: { email }, select: { id: true } });
+  return u?.id ?? null;
+}
+
 export function currentUserEmail(): string | null {
   const s = currentPortalSessionFromCookies();
   return s?.email ?? null;

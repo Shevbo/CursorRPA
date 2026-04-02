@@ -30,6 +30,57 @@ function ticketPrefixFromSlug(slug: string): string {
   return p || "PRJ";
 }
 
+/** Диаграммы для карточки проекта: хосты, протоколы, роли. */
+const ARCH_MERMAID_BY_SLUG: Record<string, string> = {
+  cursorrpa: `flowchart LR
+    Browser["Браузер"]
+    subgraph VDS["VDS shectory 83.69.248.77"]
+      PortalUI["Shectory Portal Next.js"]
+      PortalAPI["Next.js API"]
+      Agent["Cursor Agent CLI (пользователь shectory)"]
+      Bridge["Telegram bridge Python"]
+    end
+    subgraph Hoster["Hoster 83.69.248.175"]
+      PG[("Postgres")]
+      PgAdmin["pgAdmin"]
+    end
+    GH["GitHub"]
+    TG["Telegram"]
+    Browser -->|HTTPS| PortalUI
+    PortalUI -->|RSC/API| PortalAPI
+    PortalAPI -->|Prisma SQL| PG
+    PortalAPI -->|spawn| Agent
+    Bridge -->|HTTPS Bot API| TG
+    PortalAPI -->|git SSH| GH
+    PgAdmin -->|HTTP| PG`,
+  komissionka: `flowchart LR
+    U["Пользователь"]
+    subgraph Hoster["Hoster 83.69.248.175"]
+      Web["Komissionka UI"]
+      API["Backend API"]
+      DB[("Postgres komissionka_db")]
+    end
+    U -->|HTTPS| Web
+    Web -->|REST| API
+    API -->|SQL| DB`,
+  pingmaster: `flowchart LR
+    Dev["Разработчик"]
+    subgraph Pi["Shevbo-Pi 192.168.1.105"]
+      PM["PingMaster Next.js :4555"]
+      SL["syslog-srv UI :4444"]
+    end
+    Mon["Мониторинг / Telegram bridge"]
+    Dev -->|HTTP| PM
+    Dev -->|HTTP| SL
+    Mon -->|SSH tailscale user shevbo| Pi`,
+  "piranha-ai": `flowchart LR
+    Dev["Разработчик"]
+    App["PiranhaAI .NET / native"]
+    Repo["Git remote"]
+    Dev -->|IDE| App
+    Dev -->|git SSH| Repo`,
+};
+
 async function main() {
   await prisma.referenceItem.deleteMany();
   await prisma.referenceCategory.deleteMany();
@@ -41,6 +92,12 @@ async function main() {
     data: [
       { categoryId: cat.id, label: "Shectory (dev)", value: "VDS разработка, agent CLI, репозитории" },
       { categoryId: cat.id, label: "Hoster (prod)", value: "83.69.248.175 — бэкенды, UI, Postgres, Prisma" },
+      {
+        categoryId: cat.id,
+        label: "Shevbo-Pi",
+        value:
+          "Raspberry Pi (LAN 192.168.1.105, Tailscale); пользователь shevbo; syslog-srv HTTP :4444, PingMaster HTTP :4555; снаружи — без TLS на портах (открывать http://)",
+      },
     ],
   });
 
@@ -54,9 +111,19 @@ async function main() {
       workspacePath: DEFAULT_PORTAL_WORKSPACE,
       uiUrl: "https://shectory.ru",
       description:
-        "Мета-проект портала: бэклог хотелок по UI/оркестратору (P0–P3). Источник контракта: docs/shectory-portal-backlog-contract.md.",
-      architectureMermaid:
-        "flowchart LR\n  UI[Shectory Portal UI]\n  API[Next API]\n  DB[(Postgres)]\n  UI --> API --> DB",
+        "Мета-проект Shectory Portal: оркестратор проектов, бэклог UI (P0–P3). Стек: Next.js, Prisma. Хост: VDS + Postgres на Hoster. Главный UI: https://shectory.ru. Контракт: docs/shectory-portal-backlog-contract.md.",
+      architectureMermaid: `flowchart LR
+        Admin["Админ портала"]
+        subgraph VDS["VDS"]
+          UI[Shectory Portal Next.js]
+          API[Next.js API]
+        end
+        subgraph Hoster["Hoster"]
+          DB[(Postgres)]
+        end
+        Admin -->|HTTPS| UI
+        UI -->|RSC/API| API
+        API -->|Prisma SQL| DB`,
       aiContext:
         "Разработка shectory-portal в монолите CursorRPA. Задачи вести в бэклоге этого проекта или в cursorrpa для сквозных тем.",
       createdSource: "manual",
@@ -69,6 +136,18 @@ async function main() {
       ticketPrefix: ticketPrefixFromSlug("shectory-portal"),
       workspacePath: DEFAULT_PORTAL_WORKSPACE,
       uiUrl: "https://shectory.ru",
+      architectureMermaid: `flowchart LR
+        Admin["Админ портала"]
+        subgraph VDS["VDS"]
+          UI[Shectory Portal Next.js]
+          API[Next.js API]
+        end
+        subgraph Hoster["Hoster"]
+          DB[(Postgres)]
+        end
+        Admin -->|HTTPS| UI
+        UI -->|RSC/API| API
+        API -->|Prisma SQL| DB`,
     },
   });
 
@@ -83,7 +162,7 @@ async function main() {
       repoUrl: "https://github.com/Shevbo/CursorRPA.git",
       stack: ["docs", "scripts", "Next.js (shectory-portal)", "Python (telegram bridge)"],
       notes:
-        "Один репозиторий: доки, скрипты, Shectory Portal, Telegram bridge. Публичный UI: shectory.ru. Unit: shectory-portal.service.",
+        "Монолит CursorRPA: документация, скрипты, shectory-portal (Next.js), telegram-bridge (Python). Главный UI: https://shectory.ru. Модули: Portal UI/API, Prisma+Postgres на Hoster, Agent CLI на VDS, бот. Unit: shectory-portal.service.",
       hosterRole: "Web UI портала на VDS",
     },
     {
@@ -94,7 +173,8 @@ async function main() {
       workspacePath: "/home/shectory/workspaces/komissionka",
       repoUrl: "https://github.com/Shevbo/komissionka-app.git",
       stack: ["Prisma", "Postgres", "web"],
-      notes: "Прод URL: https://komissionka92.ru.",
+      notes:
+        "Комиссионка: Prisma, Postgres, веб. Главный UI прод: https://komissionka92.ru. Модули: UI, API, БД на Hoster 83.69.248.175.",
       hosterRole: "prod DB/UI/API на Hoster",
     },
     {
@@ -105,20 +185,21 @@ async function main() {
       workspacePath: "/home/shectory/workspaces/PiranhaAI",
       repoUrl: null,
       stack: [".NET", "native"],
-      notes: "Проект в portable-режиме, remote в корне не зафиксирован.",
+      notes:
+        "PiranhaAI: .NET / native. Назначение и модули — по продукту; prod URL и хосты не зафиксированы в реестре (portable).",
       hosterRole: "по продукту",
     },
     {
       slug: "pingmaster",
       name: "PingMaster",
       stage: "requirements",
-      uiUrl: null,
+      uiUrl: "http://192.168.1.105:4555",
       workspacePath: "/home/shectory/workspaces/PingMaster",
       repoUrl: null,
-      stack: ["Android"],
+      stack: ["Android", "Next.js (PingMaster web)", "Node (syslog-srv)"],
       notes:
-        "Workspace существует и приведён к базовому стандарту Shectory (README/RUNBOOK/ARCHITECTURE/deploy.sh). Требуется настройка remote и прод-инфраструктуры.",
-      hosterRole: "нет prod на Hoster (requirements)",
+        "PingMaster (Android) + веб на Shevbo-Pi: HTTP http://192.168.1.105:4555; рядом syslog-srv UI http://192.168.1.105:4444. Пользователь на Pi: shevbo. Прод на Hoster пока нет.",
+      hosterRole: "нет prod на Hoster (requirements); dev на Shevbo-Pi",
     },
   ] as const;
 
@@ -157,7 +238,8 @@ async function main() {
         stage: p.stage,
         status: "active",
         description: p.notes,
-        architectureMermaid: `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
+        architectureMermaid:
+          ARCH_MERMAID_BY_SLUG[p.slug] ?? `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
         aiContext: `Проект ${p.name}. Инфраструктурные метаданные и ссылки — в Project.registryMetaJson.\n\n${universalDeployContext}`,
         repoUrl: p.repoUrl,
         createdSource: "manual",
@@ -208,7 +290,21 @@ async function main() {
                       ],
                     },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      {
+                        id: "shevbo-pi",
+                        name: "Shevbo-Pi",
+                        group: "LAN",
+                        role: "PingMaster + syslog dev",
+                        host: "192.168.1.105 (Tailscale), Linux user shevbo",
+                        links: [
+                          { label: "PingMaster HTTP", url: "http://192.168.1.105:4555" },
+                          { label: "Syslog UI HTTP", url: "http://192.168.1.105:4444" },
+                        ],
+                      },
+                    ]
+                  : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -229,7 +325,26 @@ async function main() {
                     { id: "api", name: "Komissionka API", kind: "api", serverId: "hoster" },
                     { id: "db", name: "Postgres (komissionka_db)", kind: "db", serverId: "hoster" },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      { id: "dev", name: "Разработчик / браузер", kind: "external" },
+                      {
+                        id: "pm-web",
+                        name: "PingMaster Next.js",
+                        kind: "ui",
+                        host: "192.168.1.105:4555",
+                        serverId: "shevbo-pi",
+                      },
+                      {
+                        id: "syslog-ui",
+                        name: "syslog-srv UI Next.js",
+                        kind: "ui",
+                        host: "192.168.1.105:4444",
+                        serverId: "shevbo-pi",
+                      },
+                      { id: "android", name: "Android приложение PingMaster", kind: "mobile" },
+                    ]
+                  : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -247,7 +362,12 @@ async function main() {
                     { from: "ui", to: "api", label: "API" },
                     { from: "api", to: "db", label: "SQL" },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      { from: "dev", to: "pm-web", label: "HTTP :4555" },
+                      { from: "dev", to: "syslog-ui", label: "HTTP :4444" },
+                    ]
+                  : [],
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",
@@ -261,7 +381,8 @@ async function main() {
         uiUrl: p.uiUrl,
         stage: p.stage,
         repoUrl: p.repoUrl,
-        architectureMermaid: `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
+        architectureMermaid:
+          ARCH_MERMAID_BY_SLUG[p.slug] ?? `flowchart LR\n  ${nodeId}["${label.replace(/"/g, '\\"')}"]`,
         aiContext: `Проект ${p.name}. Инфраструктурные метаданные и ссылки — в Project.registryMetaJson.\n\n${universalDeployContext}`,
         registryMetaJson: {
           shortId: p.slug,
@@ -307,7 +428,21 @@ async function main() {
                       ],
                     },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      {
+                        id: "shevbo-pi",
+                        name: "Shevbo-Pi",
+                        group: "LAN",
+                        role: "PingMaster + syslog dev",
+                        host: "192.168.1.105 (Tailscale), Linux user shevbo",
+                        links: [
+                          { label: "PingMaster HTTP", url: "http://192.168.1.105:4555" },
+                          { label: "Syslog UI HTTP", url: "http://192.168.1.105:4444" },
+                        ],
+                      },
+                    ]
+                  : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -328,7 +463,26 @@ async function main() {
                     { id: "api", name: "Komissionka API", kind: "api", serverId: "hoster" },
                     { id: "db", name: "Postgres (komissionka_db)", kind: "db", serverId: "hoster" },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      { id: "dev", name: "Разработчик / браузер", kind: "external" },
+                      {
+                        id: "pm-web",
+                        name: "PingMaster Next.js",
+                        kind: "ui",
+                        host: "192.168.1.105:4555",
+                        serverId: "shevbo-pi",
+                      },
+                      {
+                        id: "syslog-ui",
+                        name: "syslog-srv UI Next.js",
+                        kind: "ui",
+                        host: "192.168.1.105:4444",
+                        serverId: "shevbo-pi",
+                      },
+                      { id: "android", name: "Android приложение PingMaster", kind: "mobile" },
+                    ]
+                  : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -346,7 +500,12 @@ async function main() {
                     { from: "ui", to: "api", label: "API" },
                     { from: "api", to: "db", label: "SQL" },
                   ]
-                : [],
+                : p.slug === "pingmaster"
+                  ? [
+                      { from: "dev", to: "pm-web", label: "HTTP :4555" },
+                      { from: "dev", to: "syslog-ui", label: "HTTP :4444" },
+                    ]
+                  : [],
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",
