@@ -3,7 +3,10 @@ import { currentPortalSessionFromRequest } from "@/lib/portal-auth";
 
 function defaultSpec(): { executor: string; auditor: string } {
   // Defaults for Shectory UI (no secrets). Can be overridden by env vars below.
-  return { executor: "Gemini 3.1 Pro (gemini-3.1-pro)", auditor: "Gemini 3.1 Pro (gemini-3.1-pro)" };
+  return {
+    executor: "Gemini 3 Flash (gemini-3-flash)",
+    auditor: "Gemini 3.1 Pro (gemini-3.1-pro)",
+  };
 }
 
 export async function GET(req: Request) {

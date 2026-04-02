@@ -4,7 +4,7 @@ import { shectoryWikiPreamble } from "./lib/shectory-wiki.mjs";
 
 const prisma = new PrismaClient();
 
-const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3-flash").trim();
 
 async function main() {
   const [sessionId, workspacePath, promptB64, timeoutStr] = process.argv.slice(2);

@@ -9,7 +9,7 @@ import { applyStepDoneFromReply } from "./lib/checklist.mjs";
 
 const prisma = new PrismaClient();
 
-const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3-flash").trim();
 
 /** Максимум доработок аудитора подряд (без успеха) до принудительной остановки. */
 const AUDITOR_MAX_REWORKS = Number(process.env.AUDITOR_MAX_REWORKS || "3") || 3;

@@ -6,7 +6,7 @@ import { notifyPortalUser } from "./lib/portal-notify.mjs";
 
 const prisma = new PrismaClient();
 const WAITING_CODE = "[***waiting for answer***]";
-const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
+const EXECUTOR_MODEL_ID = (process.env.SHECTORY_EXECUTOR_AGENT_MODEL_ID || "gemini-3-flash").trim();
 
 function now() {
   return new Date();
