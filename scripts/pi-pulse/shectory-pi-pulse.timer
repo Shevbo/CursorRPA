@@ -1,0 +1,12 @@
+[Unit]
+Description=Shectory Pi pulse every 5 minutes
+
+[Timer]
+Unit=shectory-pi-pulse.service
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

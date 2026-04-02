@@ -350,8 +350,35 @@ model PortalUser {
   updatedAt       DateTime @updatedAt @map("updated_at")
   emailCodes      PortalEmailCode[]
   profile         PortalUserProfile?
+  notifications   PortalNotification[]
 
   @@map("portal_users")
+}
+
+/// Последний пульс здоровья Raspberry Pi (устройство шлёт POST на портал, без SSH/VPN).
+model PiHealthPulse {
+  deviceKey   String   @id @map("device_key")
+  receivedAt  DateTime @map("received_at")
+  payloadJson Json     @map("payload_json")
+
+  @@map("pi_health_pulses")
+}
+
+/// Внутрипортальные уведомления админа (колокольчик): фоновый агент, idle и т.п.
+model PortalNotification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String    @default("general")
+  title     String
+  body      String    @db.Text
+  href      String?   @db.Text
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("portal_notifications")
 }
 
 model PortalUserProfile {

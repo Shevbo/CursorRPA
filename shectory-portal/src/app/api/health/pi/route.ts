@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { adminAuthOk } from "@/lib/admin-auth";
+import { prisma } from "@/lib/prisma";
+import { piPulseOverallStatus } from "@/lib/pi-pulse-status";
 import { tcpPortOpen } from "@/lib/tcp-port-open";
 import { cachedHealth } from "@/lib/health-cache";
 import { spawnSync } from "node:child_process";
@@ -216,12 +218,47 @@ function buildRemoteCombinedScript(
 export async function GET(req: Request) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const payload = await cachedHealth("pi_v4", 5 * 60_000, async () => {
+  const payload = await cachedHealth("pi_v5", 5 * 60_000, async () => {
     mergeTelegramBridgePiEnv();
 
-    const sshCmd = resolveSshCommandForPi(process.env.PI_MONITOR_SSH || process.env.PI_HEALTH_SSH || "");
     const syslogPort = parseInt(process.env.PI_SYSLOG_PORT || "4444", 10);
     const pingPort = parseInt(process.env.PI_PINGMASTER_PORT || "4555", 10);
+
+    const pulseMaxAgeMs = parseInt(process.env.PI_PULSE_MAX_AGE_MS || "1200000", 10);
+    const pulseDevice = (process.env.PI_PULSE_READ_DEVICE_KEY || "default").trim() || "default";
+    const pulseRow = await prisma.piHealthPulse.findUnique({ where: { deviceKey: pulseDevice } });
+    if (pulseRow && Date.now() - pulseRow.receivedAt.getTime() <= pulseMaxAgeMs) {
+      const p = pulseRow.payloadJson as Record<string, unknown>;
+      let services = Array.isArray(p.services)
+        ? (p.services as { name: string; ok: boolean }[])
+        : [];
+      services = aggregatePiMirrorServices(services, syslogPort, pingPort);
+      const status = piPulseOverallStatus({
+        cpu: p.cpu as { load1?: number; load5?: number; load15?: number },
+        ram: p.ram as { free_pct?: number },
+        hdd: p.hdd as { free_pct?: number },
+        services,
+      });
+      return {
+        ok: true,
+        status,
+        pi: {
+          ok: true,
+          metricsOk: true,
+          source: "pulse",
+          pulseAt: pulseRow.receivedAt.toISOString(),
+          hostname: typeof p.hostname === "string" ? p.hostname : undefined,
+          cpu: p.cpu,
+          ram: p.ram,
+          hdd: p.hdd,
+          services,
+        },
+        at: new Date().toISOString(),
+        intervalSec: 300,
+      };
+    }
+
+    const sshCmd = resolveSshCommandForPi(process.env.PI_MONITOR_SSH || process.env.PI_HEALTH_SSH || "");
     const tcpTimeout = parseFloat(process.env.PI_MONITOR_TCP_TIMEOUT || "3");
     const sshTimeoutMs = Math.max(5000, (parseInt(process.env.PI_MONITOR_SSH_TIMEOUT_SEC || "12", 10) || 12) * 1000);
 

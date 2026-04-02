@@ -1,0 +1,12 @@
+[Unit]
+Description=Shectory Pi health pulse to portal (HTTPS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/shectory-pi-pulse.env
+ExecStart=/usr/bin/python3 %h/workspaces/CursorRPA/scripts/pi-pulse/pulse.py
+
+[Install]
+WantedBy=multi-user.target
