@@ -33,19 +33,50 @@ export function extractStepDoneLabels(replyText) {
  * @param {string[]} labels
  * @returns {string[]} ids пунктов для отметки
  */
+/** Мин. длина метки [STEP_DONE: …] — короткие строки давали ложные совпадения сразу с несколькими пунктами. */
+const MIN_STEP_LABEL_LEN = 12;
+/** Мин. длина фрагмента для проверки «входит как подстрока» (иначе «1.», «ok» и т.п. цепляли всё подряд). */
+const MIN_OVERLAP_CHUNK = 22;
+
+/**
+ * @param {Array<{id: string, text: string, done: boolean}>} checkItems
+ * @param {string[]} labels
+ * @returns {string[]}
+ */
 export function matchCheckItemsByLabels(checkItems, labels) {
   const ids = new Set();
   for (const label of labels) {
-    const lNorm = label.toLowerCase().slice(0, 80);
+    const raw = String(label ?? "").trim();
+    if (raw.length < MIN_STEP_LABEL_LEN) continue;
+
+    const lNorm = raw.toLowerCase();
+    const lChunk = lNorm.slice(0, Math.min(80, lNorm.length));
+    if (lChunk.length < MIN_OVERLAP_CHUNK) continue;
+
+    let bestId = null;
+    let bestScore = 0;
     for (const item of checkItems) {
       if (item.done) continue;
-      const iNorm = item.text.toLowerCase().slice(0, 80);
-      // Метка содержит начало текста пункта или наоборот
-      if (iNorm.includes(lNorm.slice(0, 40)) || lNorm.includes(iNorm.slice(0, 40))) {
-        ids.add(item.id);
-        break;
+      const iNorm = item.text.toLowerCase();
+      const iHead = iNorm.slice(0, Math.min(80, iNorm.length));
+      if (iHead.length < MIN_OVERLAP_CHUNK) continue;
+
+      let ok = false;
+      if (iNorm.includes(lChunk) || lNorm.includes(iHead.slice(0, MIN_OVERLAP_CHUNK))) ok = true;
+      const l80 = lNorm.slice(0, 80);
+      const i80 = iNorm.slice(0, 80);
+      if (l80.length >= MIN_STEP_LABEL_LEN && (i80.startsWith(l80) || l80.startsWith(i80.slice(0, Math.min(i80.length, l80.length))))) {
+        ok = true;
+      }
+      if (!ok) continue;
+
+      const score = Math.min(lNorm.length, iNorm.length);
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = item.id;
       }
     }
+    if (bestId) ids.add(bestId);
   }
   return Array.from(ids);
 }

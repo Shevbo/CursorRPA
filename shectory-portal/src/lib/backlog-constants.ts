@@ -4,6 +4,7 @@ export const BACKLOG_ITEM_STATUSES = [
   "testing",
   "done",
   "rejected",
+  "archived",
 ] as const;
 export type BacklogItemStatus = (typeof BACKLOG_ITEM_STATUSES)[number];
 

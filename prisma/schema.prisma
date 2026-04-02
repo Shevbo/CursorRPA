@@ -140,7 +140,7 @@ model BacklogItem {
   ticketSeq         Int?     @map("ticket_seq")
   title             String
   description       String?  @db.Text
-  /// Статус задачи: new | in_progress | testing | done | rejected
+  /// Статус задачи: new | in_progress | testing | done | rejected | archived
   status            String   @default("new")
   priority          Int      @default(3)
   orderNum          Int?     @map("order_num")

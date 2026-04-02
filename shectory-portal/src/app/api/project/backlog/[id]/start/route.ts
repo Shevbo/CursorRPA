@@ -29,6 +29,13 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  if (item.status === "archived") {
+    return NextResponse.json(
+      { error: "Тикет в архиве. В разделе «Детали» смените статус и сохраните, затем запустите агента снова." },
+      { status: 409 }
+    );
+  }
+
   if (item.sprintId) {
     return NextResponse.json(
       { error: "Ticket is in a sprint; work happens at sprint level", sprintId: item.sprintId },

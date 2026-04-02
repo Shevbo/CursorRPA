@@ -122,7 +122,13 @@ export function BacklogTicketView({
     return n && n > 0 ? `/projects/${projectSlug}/sprints/${n}` : "";
   }, [item.sprintNumber, projectSlug]);
 
-  const reload = useCallback(async () => {
+  const itemStatuses = BACKLOG_ITEM_STATUSES as readonly string[];
+  const sprintStatuses = BACKLOG_SPRINT_STATUSES as readonly string[];
+  const safeItemStatus = itemStatuses.includes(item.status) ? item.status : "new";
+  const safeSprintStatus = sprintStatuses.includes(item.sprintStatus) ? item.sprintStatus : "forming";
+  const safePriority = Number.isFinite(item.priority) ? item.priority : 3;
+
+  const reload = useCallback(async (opts?: { updateItem?: boolean }) => {
     setErr("");
     const r = await fetch(`/api/project/backlog/${encodeURIComponent(itemId)}`, { credentials: "include" });
     const j = await r.json().catch(() => ({}));
@@ -130,7 +136,17 @@ export function BacklogTicketView({
       setErr((j as { error?: string }).error ?? `HTTP ${r.status}`);
       return;
     }
-    setItem((j as { item: ItemWithSprint }).item);
+    const updateItem = opts?.updateItem !== false;
+    if (updateItem) {
+      const raw = (j as { item: ItemWithSprint }).item;
+      const next = { ...raw };
+      const st = BACKLOG_ITEM_STATUSES as readonly string[];
+      const sp = BACKLOG_SPRINT_STATUSES as readonly string[];
+      if (!st.includes(next.status)) next.status = "new";
+      if (!sp.includes(next.sprintStatus)) next.sprintStatus = "forming";
+      if (!Number.isFinite(next.priority)) next.priority = 3;
+      setItem(next);
+    }
     setSession((j as { session: SessionWithMessages | null }).session ?? null);
     const lr = (j as { latestAgentRun?: RunWithSteps | null }).latestAgentRun;
     if (lr !== undefined) setRun(lr);
@@ -219,7 +235,8 @@ export function BacklogTicketView({
   useEffect(() => {
     if (inSprint) return;
     if (!session?.id) return;
-    const t = setInterval(() => void reload(), 3000);
+    // Не перезаписывать поля тикета (статус/приоритет в «Детали») — иначе селекты сбрасываются до «Применить».
+    const t = setInterval(() => void reload({ updateItem: false }), 3000);
     return () => clearInterval(t);
   }, [inSprint, session?.id, reload]);
 
@@ -376,6 +393,12 @@ export function BacklogTicketView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.processingMsgId, session?.isStopped, session?.updatedAt, clockTick]);
 
+  /** Все пункты «готово», но оркестратор упал — [STEP_DONE] не равен реальной сдаче (типично OD-1). */
+  const checklistDoneButRunFailed = useMemo(
+    () => checkItems.length > 0 && checkItems.every((c) => c.done) && run?.status === "failed",
+    [checkItems, run?.status]
+  );
+
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
       case "thinking":
@@ -449,12 +472,28 @@ export function BacklogTicketView({
       if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
       await reload();
       setEditMode(false);
-      setNeedsStart(true);
+      const contentTouched =
+        patch.title !== undefined ||
+        patch.description !== undefined ||
+        patch.descriptionPrompt !== undefined;
+      if (contentTouched) setNeedsStart(true);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function archiveTicket() {
+    if (item.status === "archived") return;
+    if (
+      !confirm(
+        "Перенести тикет в архив? Запуск агента и новые сообщения в чат будут недоступны, пока в «Детали» не смените статус."
+      )
+    ) {
+      return;
+    }
+    await save({ status: "archived" });
   }
 
   async function startWork(forceClick = false) {
@@ -967,15 +1006,32 @@ export function BacklogTicketView({
                   </button>
                   <button
                     type="button"
-                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
-                    disabled={inSprint || startPending || agentWaiting}
-                    onClick={() => void startWork(false)}
+                    className="rounded border border-slate-600 px-3 py-2 text-sm text-slate-300 hover:bg-slate-900/50 disabled:opacity-50"
+                    disabled={inSprint || saving || item.status === "archived"}
+                    onClick={() => void archiveTicket()}
                     title={
                       inSprint
-                        ? "Работа идёт в рамках спринта"
-                        : agentWaiting
-                          ? "Агент ждёт вашего ответа. Нажмите «Отправить» в поле чата."
-                          : "Создать/открыть чат с агентом под тикетом"
+                        ? "В спринте архив через карточку спринта"
+                        : item.status === "archived"
+                          ? "Тикет уже в архиве"
+                          : "Статус тикета → archived; агент и чат недоступны до смены статуса"
+                    }
+                  >
+                    Перенести в архив
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/40 disabled:opacity-50"
+                    disabled={inSprint || startPending || agentWaiting || item.status === "archived"}
+                    onClick={() => void startWork(false)}
+                    title={
+                      item.status === "archived"
+                        ? "Тикет в архиве — в «Детали» смените статус"
+                        : inSprint
+                          ? "Работа идёт в рамках спринта"
+                          : agentWaiting
+                            ? "Агент ждёт вашего ответа. Нажмите «Отправить» в поле чата."
+                            : "Создать/открыть чат с агентом под тикетом"
                     }
                   >
                     {agentWaiting ? "Агент ждёт ответа" : startPending ? "Агент думает…" : needsStart ? "Запустить в работу" : "Перезапустить агента"}
@@ -1020,7 +1076,7 @@ export function BacklogTicketView({
                   <span className="text-xs text-slate-500">Status</span>
                   <select
                     className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-                    value={item.status}
+                    value={safeItemStatus}
                     onChange={(e) => setItem({ ...item, status: e.target.value })}
                   >
                     {BACKLOG_ITEM_STATUSES.map((s) => (
@@ -1034,7 +1090,7 @@ export function BacklogTicketView({
                   <span className="text-xs text-slate-500">Priority</span>
                   <select
                     className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-                    value={item.priority}
+                    value={safePriority}
                     onChange={(e) => setItem({ ...item, priority: parseInt(e.target.value, 10) })}
                   >
                     {[1, 2, 3, 4, 5].map((p) => (
@@ -1048,7 +1104,7 @@ export function BacklogTicketView({
                   <span className="text-xs text-slate-500">Sprint status</span>
                   <select
                     className="rounded border border-slate-700 bg-slate-950 px-2 py-2 text-slate-200"
-                    value={item.sprintStatus}
+                    value={safeSprintStatus}
                     onChange={(e) => setItem({ ...item, sprintStatus: e.target.value })}
                   >
                     {BACKLOG_SPRINT_STATUSES.map((s) => (
@@ -1171,8 +1227,11 @@ export function BacklogTicketView({
                   {checkItems.filter((c) => c.done).length}/{checkItems.length}
                 </span>
               )}
-              {checkItems.length > 0 && checkItems.every((c) => c.done) && (
+              {checkItems.length > 0 && checkItems.every((c) => c.done) && !checklistDoneButRunFailed && (
                 <span className="rounded-full bg-emerald-900/40 px-1.5 py-0.5 text-[10px] text-emerald-300">✓ готово</span>
+              )}
+              {checklistDoneButRunFailed && (
+                <span className="rounded-full bg-amber-900/50 px-1.5 py-0.5 text-[10px] text-amber-200">⚠ не подтверждено</span>
               )}
               {(agentPresence === "thinking" || agentPresence === "auditing") && checkItems.some((c) => !c.done) && (
                 <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
@@ -1191,6 +1250,13 @@ export function BacklogTicketView({
 
           {checklistOpen && (
             <div className="border-t border-slate-800 px-3 pb-3 pt-2">
+              {checklistDoneButRunFailed && (
+                <div className="mb-2 rounded border border-amber-800/70 bg-amber-950/40 px-2 py-1.5 text-[11px] leading-snug text-amber-100">
+                  Запуск оркестратора завершился ошибкой, а пункты могли быть отмечены автоматически по маркерам{" "}
+                  <span className="font-mono text-amber-200/90">[STEP_DONE: …]</span> в ответах агента. Это не означает,
+                  что работа сделана: проверьте репозиторий, при необходимости снимите галочки или перезапустите агента.
+                </div>
+              )}
               {/* Progress bar */}
               {checkItems.length > 0 && (
                 <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-slate-800">

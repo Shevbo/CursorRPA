@@ -176,6 +176,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Session is stopped" }, { status: 409 });
   }
 
+  if (session.backlogItemId) {
+    const bi = await prisma.backlogItem.findUnique({
+      where: { id: session.backlogItemId },
+      select: { status: true },
+    });
+    if (bi?.status === "archived") {
+      return NextResponse.json(
+        { error: "Тикет в архиве. В «Детали» смените статус и нажмите «Применить статус/приоритет», затем снова отправьте сообщение." },
+        { status: 409 }
+      );
+    }
+  }
+
   const cleanMessage = trimmed ? redactSecrets(trimmed) : "";
   const contentForDb = cleanMessage || "(только вложения)";
 
