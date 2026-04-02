@@ -148,14 +148,6 @@ export function BacklogTicketView({
 
   useEffect(() => { void loadChecklist(); }, [loadChecklist]);
 
-  // Poll checklist while agent is thinking — picks up [STEP_DONE] updates in real time
-  useEffect(() => {
-    if (agentPresence !== "thinking" && agentPresence !== "auditing") return;
-    const t = setInterval(() => void loadChecklist(), 5000);
-    return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentPresence, loadChecklist]);
-
   const toggleCheckItem = useCallback(async (id: string, done: boolean) => {
     setCheckItems((prev) => prev.map((c) => c.id === id ? { ...c, done } : c));
     await fetch("/api/project/backlog/checklist", {
@@ -332,6 +324,13 @@ export function BacklogTicketView({
     }
     return sessionDerivedPresence;
   }, [session?.isStopped, run, startPending, loadingChat, cmdRunning, generating, promptRun, iframeChatSync, sessionDerivedPresence]);
+
+  // Poll checklist while agent is thinking — picks up [STEP_DONE] updates in real time
+  useEffect(() => {
+    if (agentPresence !== "thinking" && agentPresence !== "auditing") return;
+    const t = setInterval(() => void loadChecklist(), 5000);
+    return () => clearInterval(t);
+  }, [agentPresence, loadChecklist]);
 
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
