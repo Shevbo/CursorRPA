@@ -287,6 +287,11 @@ main()
             content: `🕵️ Аудитор: ошибка процесса: ${e instanceof Error ? e.message : String(e)}`,
           },
         });
+        // Release the lock so the queue is not permanently blocked
+        await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { processingMsgId: null },
+        }).catch(() => {});
       }
     } catch {
       // ignore

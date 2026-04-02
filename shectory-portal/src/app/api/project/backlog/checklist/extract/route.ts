@@ -27,6 +27,30 @@ function extractSteps(text: string): string[] {
       continue;
     }
 
+    // "1 — текст", "2 - текст", "3–критерий"
+    const dashNum = line.match(/^(\d+)\s*[-–—]\s+(.+)/);
+    if (dashNum) {
+      const text = dashNum[2]?.trim();
+      if (text && text.length > 3) steps.push(text);
+      continue;
+    }
+
+    // Заголовки markdown: "### 1. …", "## Шаг 2 — …"
+    const mdStep = line.match(/^#{1,4}\s*(?:шаг\s+)?(\d+)[.)]\s*(.+)/i);
+    if (mdStep) {
+      const text = mdStep[2]?.trim();
+      if (text && text.length > 3) steps.push(text);
+      continue;
+    }
+
+    // "(1) текст"
+    const parenNum = line.match(/^\((\d+)\)\s*(.+)/);
+    if (parenNum) {
+      const text = parenNum[2]?.trim();
+      if (text && text.length > 3) steps.push(text);
+      continue;
+    }
+
     // Маркированные: "- текст", "* текст", "• текст"
     const bulleted = line.match(/^[-*•]\s+(.+)/);
     if (bulleted) {
@@ -49,7 +73,7 @@ function extractSteps(text: string): string[] {
 export async function POST(req: NextRequest) {
   if (!adminAuthOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { itemId?: string; replaceExisting?: boolean };
+  let body: { itemId?: string; replaceExisting?: boolean; sourceText?: string };
   try {
     body = await req.json();
   } catch {
@@ -65,9 +89,10 @@ export async function POST(req: NextRequest) {
   });
   if (!backlogItem) return NextResponse.json({ error: "BacklogItem not found" }, { status: 404 });
 
-  const sourceText = [backlogItem.descriptionPrompt, backlogItem.description]
-    .filter(Boolean)
-    .join("\n\n");
+  const fromClient = typeof body.sourceText === "string" ? body.sourceText.trim() : "";
+  const sourceText = fromClient
+    ? fromClient
+    : [backlogItem.descriptionPrompt, backlogItem.description].filter(Boolean).join("\n\n");
 
   if (!sourceText.trim()) {
     return NextResponse.json({ ok: true, items: [], extracted: 0, message: "Нет текста для извлечения" });

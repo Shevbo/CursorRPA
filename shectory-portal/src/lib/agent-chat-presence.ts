@@ -6,6 +6,9 @@ export function looksLikeAssistantFailure(content: string): boolean {
   if (/\bspawn\s+e[a-z0-9_]+\b/i.test(low)) return true;
   if (/ошибка\s+фонов(ого)?\s+агента/i.test(c)) return true;
   if (/\bargument list too long\b/i.test(low)) return true;
+  if (/оркестратор\s+завис/i.test(c)) return true;
+  if (/watchdog\s+обнаружил/i.test(low)) return true;
+  if (/помечен\s+как\s+ошибочн/i.test(low)) return true;
   return false;
 }
 

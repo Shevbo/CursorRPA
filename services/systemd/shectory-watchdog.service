@@ -1,0 +1,20 @@
+[Unit]
+Description=Shectory Agent Watchdog — мониторинг зависших агентских процессов
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shectory
+Group=shectory
+WorkingDirectory=/home/shectory/workspaces/CursorRPA/shectory-portal
+ExecStart=/home/shectory/workspaces/CursorRPA/shectory-portal/scripts/watchdog.sh
+Restart=on-failure
+RestartSec=30
+# Логи в journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shectory-watchdog
+
+[Install]
+WantedBy=multi-user.target

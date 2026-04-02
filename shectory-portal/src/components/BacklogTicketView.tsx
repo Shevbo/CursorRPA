@@ -62,6 +62,7 @@ export function BacklogTicketView({
   projectTechStack,
   initialItem,
   initialSession,
+  initialAgentRun,
 }: {
   projectId: string;
   projectSlug: string;
@@ -70,6 +71,7 @@ export function BacklogTicketView({
   projectTechStack: string[];
   initialItem: unknown;
   initialSession: unknown | null;
+  initialAgentRun?: unknown | null;
 }) {
   const [item, setItem] = useState<ItemWithSprint>(initialItem as ItemWithSprint);
   const [session, setSession] = useState<SessionWithMessages | null>(initialSession as SessionWithMessages | null);
@@ -87,7 +89,7 @@ export function BacklogTicketView({
   const [startPendingSince, setStartPendingSince] = useState<number>(0);
   const [startRunToken, setStartRunToken] = useState<number>(0);
   const [err, setErr] = useState("");
-  const [run, setRun] = useState<RunWithSteps | null>(null);
+  const [run, setRun] = useState<RunWithSteps | null>(() => (initialAgentRun as RunWithSteps | null) ?? null);
   const [runConnected, setRunConnected] = useState(false);
   const [promptRun, setPromptRun] = useState<RunWithSteps | null>(null);
   const [promptRunConnected, setPromptRunConnected] = useState(false);
@@ -130,6 +132,8 @@ export function BacklogTicketView({
     }
     setItem((j as { item: ItemWithSprint }).item);
     setSession((j as { session: SessionWithMessages | null }).session ?? null);
+    const lr = (j as { latestAgentRun?: RunWithSteps | null }).latestAgentRun;
+    if (lr !== undefined) setRun(lr);
   }, [itemId]);
 
   const onTicketChatPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -187,21 +191,30 @@ export function BacklogTicketView({
 
   const extractChecklistFromPrompt = useCallback(async (replace: boolean) => {
     setChecklistExtracting(true);
+    setErr("");
     try {
+      const sourceText = [item.descriptionPrompt?.trim(), item.description?.trim()].filter(Boolean).join("\n\n");
       const r = await fetch("/api/project/backlog/checklist/extract", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId, replaceExisting: replace }),
+        body: JSON.stringify({ itemId, replaceExisting: replace, sourceText: sourceText || undefined }),
       });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && Array.isArray((j as { items?: CheckItem[] }).items)) {
+      if (!r.ok) {
+        setErr((j as { error?: string }).error ?? `Извлечение чеклиста: HTTP ${r.status}`);
+        return;
+      }
+      if (Array.isArray((j as { items?: CheckItem[] }).items)) {
         setCheckItems((j as { items: CheckItem[] }).items);
       }
+      const msg = (j as { message?: string }).message;
+      const n = (j as { extracted?: number }).extracted;
+      if (msg && (!n || n === 0)) setErr(msg);
     } finally {
       setChecklistExtracting(false);
     }
-  }, [itemId]);
+  }, [itemId, item.description, item.descriptionPrompt]);
 
   useEffect(() => {
     if (inSprint) return;
@@ -349,6 +362,20 @@ export function BacklogTicketView({
     return () => clearInterval(t);
   }, [agentPresence, loadChecklist]);
 
+  /**
+   * Сколько минут нет пульса от агента (null = пульс свежий или агент не занят).
+   * Показывается предупреждение когда processingMsgId занят, но heartbeat старый.
+   */
+  const heartbeatStaleMins = useMemo((): number | null => {
+    if (!session?.processingMsgId || session.isStopped) return null;
+    if (!session?.updatedAt) return null;
+    const ageMs = Date.now() - new Date(session.updatedAt as string | Date).getTime();
+    const mins = Math.round(ageMs / 60000);
+    // Показываем предупреждение если нет пульса более 5 минут
+    return mins >= 5 ? mins : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.processingMsgId, session?.isStopped, session?.updatedAt, clockTick]);
+
   const agentPresenceTitle = useMemo(() => {
     switch (agentPresence) {
       case "thinking":
@@ -361,6 +388,19 @@ export function BacklogTicketView({
         return "Ответ уже в ленте; автоматически нового сообщения сейчас не ожидается. Если агент задал вопрос — ответьте в поле ниже.";
     }
   }, [agentPresence]);
+
+  /** Баннер под полями тикета: не оставлять «Агент думает», если оркестратор уже failed. */
+  const ticketOrchestratorBanner = useMemo(() => {
+    if (inSprint) return null;
+    if (run?.status === "failed") {
+      return "❌ Оркестратор остановлен или завис (см. чат). Нажмите «Перезапустить агента», чтобы выполнить новый запуск с актуальным промптом.";
+    }
+    return startInfo?.note ?? null;
+  }, [inSprint, run?.status, startInfo?.note]);
+
+  useEffect(() => {
+    if (run?.status === "failed") setStartPending(false);
+  }, [run?.status]);
 
   useEffect(() => {
     try {
@@ -428,8 +468,10 @@ export function BacklogTicketView({
     const myToken = startRunToken + 1;
     setStartRunToken(myToken);
     setStartInfo({ note: "⏳ Отправляю сигнал агенту…" });
-    const force = needsStart || editMode || forceClick;
-    const r = await fetch(`/api/project/backlog/${encodeURIComponent(itemId)}/start${force ? "?force=1" : ""}`, {
+    // При уже существующей сессии без ?force=1 сервер только возвращает session и НЕ запускает оркестратор.
+    const forceStart =
+      needsStart || editMode || forceClick || Boolean(session?.id);
+    const r = await fetch(`/api/project/backlog/${encodeURIComponent(itemId)}/start${forceStart ? "?force=1" : ""}`, {
       method: "POST",
       credentials: "include",
     });
@@ -1095,12 +1137,22 @@ export function BacklogTicketView({
           </div>
         )}
 
-        {startInfo?.note && !inSprint && (
-          <div className="mt-3 rounded border border-slate-800 bg-black/20 p-3 text-xs text-slate-300">
-            <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500 align-middle" />
-            {startInfo.note}
+        {ticketOrchestratorBanner ? (
+          <div
+            className={`mt-3 rounded border p-3 text-xs ${
+              run?.status === "failed"
+                ? "border-red-900/60 bg-red-950/25 text-red-100"
+                : "border-slate-800 bg-black/20 text-slate-300"
+            }`}
+          >
+            {run?.status === "failed" ? (
+              <span className="mr-2 inline-block h-2 w-2 rounded-full bg-red-400 align-middle" aria-hidden />
+            ) : (
+              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500 align-middle" aria-hidden />
+            )}
+            {ticketOrchestratorBanner}
           </div>
-        )}
+        ) : null}
 
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
 
@@ -1256,6 +1308,15 @@ export function BacklogTicketView({
           {session?.updatedAt && agentPresence === "thinking" && !session.isStopped ? (
             <span className="text-[10px] text-slate-500" title="Последний пульс от агента">
               пульс: {new Date(session.updatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+          ) : null}
+          {heartbeatStaleMins !== null ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-amber-600/60 bg-amber-950/60 px-2 py-0.5 text-[10px] font-medium text-amber-300"
+              title={`Нет пульса от агента уже ${heartbeatStaleMins} мин. Watchdog проверит и перезапустит процесс автоматически.`}
+            >
+              <span className="size-1.5 animate-pulse rounded-full bg-amber-400" aria-hidden />
+              Нет пульса {heartbeatStaleMins} мин
             </span>
           ) : null}
           {queuedCount > 0 && agentPresence === "thinking" ? (

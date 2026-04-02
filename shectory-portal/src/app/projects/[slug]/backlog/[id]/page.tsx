@@ -47,6 +47,12 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
       }
     : null;
 
+  const initialAgentRun = await prisma.agentRun.findFirst({
+    where: { backlogItemId: item.id, kind: "backlog_ticket_start" },
+    orderBy: { createdAt: "desc" },
+    include: { steps: { orderBy: { index: "asc" } } },
+  });
+
   return (
     <main className="mx-auto flex h-dvh max-h-dvh min-h-0 w-full max-w-6xl flex-col overflow-hidden px-3 py-3 sm:px-4 sm:py-4">
       <div className="mb-2 shrink-0 flex flex-wrap items-center justify-between gap-2">
@@ -72,6 +78,7 @@ export default async function BacklogTicketPage({ params }: { params: { slug: st
           projectTechStack={project.techStack.map((t) => t.name)}
           initialItem={item as unknown as Record<string, unknown>}
           initialSession={initialSession as unknown as Record<string, unknown> | null}
+          initialAgentRun={initialAgentRun as unknown as Record<string, unknown> | null}
         />
       </div>
     </main>

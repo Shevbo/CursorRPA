@@ -59,7 +59,14 @@ export async function GET(req: Request, { params }: Ctx) {
         ),
       }
     : null;
-  return NextResponse.json({ item, session });
+
+  const latestAgentRun = await prisma.agentRun.findFirst({
+    where: { backlogItemId: params.id, kind: "backlog_ticket_start" },
+    orderBy: { createdAt: "desc" },
+    include: { steps: { orderBy: { index: "asc" } } },
+  });
+
+  return NextResponse.json({ item, session, latestAgentRun });
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
