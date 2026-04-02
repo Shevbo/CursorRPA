@@ -226,7 +226,7 @@ export function NotificationBell({ className = "" }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="relative flex size-10 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 touch-manipulation"
+        className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 touch-manipulation"
         aria-expanded={open}
         aria-label="Уведомления"
         title="Уведомления"

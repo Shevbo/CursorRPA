@@ -380,7 +380,7 @@ export function ProjectWorkspace({
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`.trim()}>
-      <div className="flex shrink-0 flex-wrap gap-2 border-b border-slate-800 bg-slate-950 py-2">
+      <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-800 bg-slate-950 py-2 scrollbar-none sm:flex-wrap">
         {(["chat", "files", "backlog", "tests", "deploy", "bot", "terminal"] as const).map((t) => (
           <button
             key={t}
@@ -392,7 +392,7 @@ export function ProjectWorkspace({
               if (t === "deploy") void loadDeploy();
               if (t === "bot") void loadBotStatus();
             }}
-            className={`rounded px-4 py-2 text-sm font-medium ${
+            className={`shrink-0 rounded px-4 py-2 text-sm font-medium ${
               tab === t ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
             }`}
           >
@@ -418,7 +418,7 @@ export function ProjectWorkspace({
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row lg:gap-3">
             <div className="w-full shrink-0 lg:w-48">
               <div className="text-xs text-slate-500">Сессии</div>
-              <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto lg:max-h-none">
+              <ul className="mt-1 flex max-h-28 flex-row gap-1 overflow-x-auto overflow-y-hidden lg:max-h-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:space-y-1">
                 {sessions.map((s) => (
                   <li key={s.id}>
                     <button
@@ -427,7 +427,7 @@ export function ProjectWorkspace({
                         setActiveId(s.id);
                         setChatVisibleCount(CHAT_INITIAL_VISIBLE);
                       }}
-                      className={`w-full rounded px-2 py-1 text-left text-sm ${
+                      className={`w-full shrink-0 rounded px-2 py-1 text-left text-sm lg:w-full ${
                         s.id === activeId ? "bg-slate-700 text-white" : "text-slate-400 hover:bg-slate-800"
                       }`}
                     >
@@ -454,7 +454,7 @@ export function ProjectWorkspace({
                   <div
                     key={m.id}
                     className={
-                      m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"
+                      m.role === "user" ? "ml-4 rounded-lg bg-blue-900/30 p-3 sm:ml-8" : "mr-4 rounded-lg bg-slate-800/50 p-3 sm:mr-8"
                     }
                   >
                     <div className="text-xs text-slate-500">
@@ -508,7 +508,7 @@ export function ProjectWorkspace({
               <div className="shrink-0 border-t border-slate-800 bg-slate-950/80 p-2">
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                    className="min-h-[44px] flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white sm:min-h-0 sm:text-sm"
                     placeholder="Сообщение агенту Cursor (выполняется agent CLI на сервере)…"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
@@ -518,7 +518,7 @@ export function ProjectWorkspace({
                     type="button"
                     disabled={loading}
                     onClick={() => void send()}
-                    className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    className="min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 sm:min-h-0"
                   >
                     {loading ? "…" : "Отправить"}
                   </button>

@@ -105,35 +105,35 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-4 py-8">
-      <header className="mb-4 flex items-start justify-between gap-3">
-        <div>
+    <main className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:py-8">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="shrink-0">
           <img
             src="/brand/shectory-logo.gif"
             alt="Shectory"
-            className="h-15 w-auto"
+            className="h-12 w-auto sm:h-14"
           />
         </div>
         <div className="text-right">
-          <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-white">PORTAL</div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-bold text-white sm:px-4 sm:py-2">PORTAL</div>
           <div className="mt-1 text-xs text-slate-500">app 0.1.0 | auth 2.0.0</div>
         </div>
       </header>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <article className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/40 p-6">
-          <h1 className="text-2xl font-semibold text-white">Информационный фрейм портала</h1>
+        <article className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:p-6">
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">Информационный фрейм портала</h1>
           <p className="mt-3 whitespace-pre-wrap text-sm text-slate-300">
             Здесь размещается открытая визуализация состояния Shectory: проекты, статусы сред, версия модулей,
             ключевые метрики и служебные подсказки для оператора.
           </p>
         </article>
-        <aside className="rounded-xl border border-slate-800 bg-black/30 p-5">
+        <aside className="rounded-xl border border-slate-800 bg-black/30 p-4 sm:p-5">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <form onSubmit={submit} className="mt-4 space-y-3">
             <input
               type="email"
-              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-3 text-base text-white sm:py-2 sm:text-sm"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -141,7 +141,7 @@ export default function LoginPage() {
             />
             <input
               type="password"
-              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-3 text-base text-white sm:py-2 sm:text-sm"
               placeholder="Пароль"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -150,7 +150,7 @@ export default function LoginPage() {
             {(mode === "register" || mode === "forgot") && (
               <input
                 type="text"
-                className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-3 text-base text-white sm:py-2 sm:text-sm"
                 placeholder="Код из письма"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -166,14 +166,18 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded bg-blue-600 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="w-full rounded bg-blue-600 py-3 text-sm font-medium text-white disabled:opacity-50 sm:py-2"
             >
               {loading ? "…" : mode === "login" ? "Войти" : mode === "set-initial" ? "Задать пароль" : "Подтвердить"}
             </button>
           </form>
 
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            <button type="button" onClick={() => setMode("login")} className="text-blue-400 hover:underline">
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className="min-h-[44px] px-2 text-blue-400 hover:underline sm:min-h-0"
+            >
               Вход
             </button>
             <button
@@ -183,7 +187,7 @@ export default function LoginPage() {
                 setCode("");
                 setErr("");
               }}
-              className="text-blue-400 hover:underline"
+              className="min-h-[44px] px-2 text-blue-400 hover:underline sm:min-h-0"
             >
               Регистрация
             </button>
@@ -194,7 +198,7 @@ export default function LoginPage() {
                 setCode("");
                 setErr("");
               }}
-              className="text-blue-400 hover:underline"
+              className="min-h-[44px] px-2 text-blue-400 hover:underline sm:min-h-0"
             >
               Забыли пароль
             </button>
@@ -204,7 +208,7 @@ export default function LoginPage() {
               type="button"
               disabled={loading}
               onClick={() => void requestCode(mode === "register" ? "register" : "forgot")}
-              className="mt-3 text-xs text-amber-300 hover:underline disabled:opacity-50"
+              className="mt-3 min-h-[44px] px-2 text-xs text-amber-300 hover:underline disabled:opacity-50 sm:min-h-0"
             >
               Отправить код на e-mail
             </button>

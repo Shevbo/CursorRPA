@@ -452,7 +452,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
               {session.messages.map((m) => (
                 <div
                   key={m.id}
-                  className={m.role === "user" ? "ml-8 rounded-lg bg-blue-900/30 p-3" : "mr-8 rounded-lg bg-slate-800/50 p-3"}
+                  className={m.role === "user" ? "ml-4 rounded-lg bg-blue-900/30 p-3 sm:ml-8" : "mr-4 rounded-lg bg-slate-800/50 p-3 sm:mr-8"}
                 >
                   <div className="text-xs text-slate-500">
                     <span className="text-slate-400">{formatMsgTime(m.createdAt)}</span>
@@ -560,7 +560,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
           <div className="flex gap-2">
             <div className="relative min-h-[2.75rem] min-w-0 max-h-32 flex-1">
               <textarea
-                className="min-h-[2.75rem] max-h-32 w-full resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-60"
+                className="min-h-[44px] max-h-32 w-full resize-y rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-white disabled:opacity-60 sm:text-sm"
                 placeholder="Сообщение агенту…"
                 rows={2}
                 value={input}
@@ -583,7 +583,7 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             <div className="flex shrink-0 flex-col items-end justify-end self-stretch">
               <button
                 type="button"
-                className="mt-auto rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="mt-auto min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 sm:min-h-0"
                 disabled={loading || !sessionId || (!input.trim() && pendingFiles.length === 0)}
                 onClick={() => void send()}
               >

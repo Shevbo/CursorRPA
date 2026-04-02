@@ -43,7 +43,7 @@ function stripTile(
           : "border-slate-700 bg-slate-950/80";
   return (
     <div
-      className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-[11px] leading-snug text-slate-200 shadow-sm ${border}`}
+      className={`min-w-[min(100%,calc(50%-0.25rem))] flex-1 rounded-lg border px-3 py-2 text-[11px] leading-snug text-slate-200 shadow-sm sm:min-w-0 ${border}`}
     >
       <div className="truncate font-semibold tracking-wide text-slate-100">{title}</div>
       <div className="mt-1 flex min-h-[4.25rem] gap-2">

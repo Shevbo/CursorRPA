@@ -1473,7 +1473,7 @@ export function BacklogTicketView({
             <div className="flex min-h-0 flex-1 gap-2">
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <textarea
-                  className="min-h-0 min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-white disabled:opacity-60"
+                  className="min-h-[44px] min-w-0 w-full flex-1 resize-none rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-base text-white disabled:opacity-60 sm:min-h-0 sm:text-sm"
                   placeholder={session?.isStopped ? "Сессия остановлена — перезапустите агента" : "Сообщение агенту…"}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -1510,7 +1510,7 @@ export function BacklogTicketView({
                 </div>
                 <button
                   type="button"
-                  className="shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="min-h-[44px] shrink-0 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60 sm:min-h-0"
                   disabled={
                     loadingChat || !session?.id || session.isStopped === true || (!chatInput.trim() && pendingChatFiles.length === 0)
                   }

@@ -195,7 +195,7 @@ export function BacklogPanel({
         </p>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-900/30 p-3 text-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-900/30 p-3 text-sm [&_select]:min-h-[44px] [&_input]:min-h-[44px] sm:[&_select]:min-h-0 sm:[&_input]:min-h-0">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-slate-500">Статус</span>
           <select
@@ -266,7 +266,7 @@ export function BacklogPanel({
         <button
           type="button"
           onClick={() => void load()}
-          className="rounded border border-slate-600 px-3 py-1.5 text-slate-300 hover:bg-slate-800"
+          className="min-h-[44px] rounded border border-slate-600 px-3 py-1.5 text-slate-300 hover:bg-slate-800 sm:min-h-0"
         >
           Обновить
         </button>
@@ -330,7 +330,7 @@ export function BacklogPanel({
         />
         <button
           type="button"
-          className="mt-2 rounded bg-blue-600 px-4 py-2 text-sm text-white"
+          className="mt-2 min-h-[44px] rounded bg-blue-600 px-4 py-2 text-sm text-white sm:min-h-0"
           onClick={() => void addItem()}
         >
           Добавить в бэклог

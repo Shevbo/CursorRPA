@@ -35,21 +35,21 @@ export default async function ProjectsPage({
 
   return (
     <div className="relative min-h-screen">
-    <main className="mx-auto max-w-7xl px-4 py-6 pb-[9.5rem]">
+    <main className="mx-auto max-w-7xl px-4 py-6 pb-[18rem] sm:pb-[9.5rem]">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800 pb-6">
         <div className="flex items-center gap-3">
-          <ShectoryLogoPicker canUpload={canEditDescriptions} sizeClass="h-14" />
+          <ShectoryLogoPicker canUpload={canEditDescriptions} sizeClass="h-12 sm:h-14" />
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-white">Shectory</h1>
-            <p className="mt-0.5 text-slate-400">Панель управления · проекты</p>
+            <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">Shectory</h1>
+            <p className="mt-0.5 text-sm text-slate-400">Панель управления · проекты</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
           <NotificationBell />
           {canEditDescriptions && (
             <Link
               href="/projects?editCards=1"
-              className="rounded-lg border border-amber-700/70 bg-amber-900/20 px-3 py-1.5 text-sm text-amber-200 hover:bg-amber-900/40"
+              className="min-h-[44px] rounded-lg border border-amber-700/70 bg-amber-900/20 px-3 py-2 text-sm text-amber-200 hover:bg-amber-900/40 sm:min-h-0 sm:py-1.5"
             >
               Обновить карточки
             </Link>

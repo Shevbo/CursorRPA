@@ -72,7 +72,7 @@ export function UserProfileButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+        className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800 sm:min-h-0"
       >
         Профиль
       </button>
