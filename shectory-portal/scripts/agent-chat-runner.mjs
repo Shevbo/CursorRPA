@@ -178,6 +178,18 @@ async function main() {
     return;
   }
 
+  // Clean up any stale ⏳ placeholders left by previous crashed processes
+  const staleStuck = await prisma.chatMessage.findMany({
+    where: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
+    select: { id: true },
+  });
+  if (staleStuck.length > 0) {
+    await prisma.chatMessage.updateMany({
+      where: { id: { in: staleStuck.map((m) => m.id) } },
+      data: { content: "_(процесс агента прерван — ответ не получен)_" },
+    });
+  }
+
   const processingMsg = await prisma.chatMessage.create({
     data: { sessionId, role: "assistant", content: "⏳ Агент обрабатывает сообщение…" },
   });
