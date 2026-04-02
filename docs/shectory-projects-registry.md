@@ -46,6 +46,7 @@ flowchart TB
 | komissionka | Комиссионка      | dev / prod split | `https://komissionka92.ru` | `/home/shectory/workspaces/komissionka` | `https://github.com/Shevbo/komissionka-app.git`                                         | ok (`git ls-remote`)       | prod DB/UI/API на Hoster          | Prisma, Postgres, web  | Прод URL: `https://komissionka92.ru`.                                                                                           |
 | piranha-ai  | PiranhaAI        | dev              | `-`                        | `/home/shectory/workspaces/PiranhaAI`   | *нет `.git` в корне проекта (portable)*                                                 | n/a                        | по продукту                       | .NET / native          | Проект в portable-режиме, remote в корне не зафиксирован.                                                                       |
 | pingmaster  | PingMaster       | requirements     | `-`                        | `/home/shectory/workspaces/PingMaster`  | локальный git инициализирован (remote не настроен)                                      | partial                    | нет prod на Hoster (requirements) | Android                | Workspace приведён к базовому стандарту (README, RUNBOOK, ARCHITECTURE, scripts/deploy.sh). Нужны remote и прод-инфра.      |
+| ourdiary    | Наш дневник (ourdiary) | dev         | `-`                        | `/home/shectory/workspaces/ourdiary`    | `git@github.com:Shevbo/ourdiary.git`                                                    | ok                         | prod на Hoster (по RUNBOOK)       | Next.js 16, Prisma, NextAuth | Деплой: `./scripts/deploy-project.sh ourdiary hoster` из корня клона CursorRPA. На hoster должен существовать каталог проекта (см. RUNBOOK). |
 
 
 ---
@@ -59,6 +60,7 @@ flowchart TB
 | `/home/shectory/workspaces/komissionka`  | git-клон продукта komissionka                   | рабочая копия проекта komissionka                |
 | `/home/shectory/workspaces/PiranhaAI`    | проект в portable-режиме                         | рабочая копия проекта PiranhaAI                  |
 | `/home/shectory/workspaces/PingMaster`   | базовый bootstrap по стандарту Shectory          | рабочая копия проекта PingMaster                 |
+| `/home/shectory/workspaces/ourdiary`     | семейный дневник: лента, календарь, расходы, TV  | репозиторий **ourdiary**                         |
 
 
 ---

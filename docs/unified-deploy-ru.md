@@ -25,6 +25,8 @@
 
 `deploy-project.sh` делает это автоматически там, где проект является git-репозиторием.
 
+Если `git push` сообщает **«No configured push destination»**, сначала настройте **`origin`**: канонический URL и путь клона указаны в [shectory-projects-registry.md](shectory-projects-registry.md). Норма для VDS — **SSH**-remote (`git@github.com:...`), см. раздел **«Git remote и новый прикладной репозиторий»** в [shectory-wikipedia.md](shectory-wikipedia.md).
+
 ## Прокси для скачивания зависимостей (универсально для всех проектов)
 
 Если на сервере нужен прокси для скачивания зависимостей/ресурсов (pip/npm/docker build и т.д.), используйте единый файл:
