@@ -13,7 +13,7 @@ import {
   looksLikeAssistantFailure,
   type TicketChatPostMessage,
 } from "@/lib/agent-chat-presence";
-import { collectClipboardFiles, mergePendingFiles } from "@/lib/chat-attachment-paste";
+import { collectClipboardFiles, mergePendingFiles, fmtFileSize } from "@/lib/chat-attachment-paste";
 import { ChatPaperclipAttach } from "@/components/ChatPaperclipAttach";
 import {
   TICKET_CONTEXT_HEAD,
@@ -375,12 +375,13 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
       if ((tj as { item?: Ticket }).item) setTicket((tj as { item: Ticket }).item);
       const ctx = buildOutgoingPayload(raw, latestTicket ?? null, session);
       let r: Response;
-      if (pendingFiles.length > 0) {
+      const validFiles = pendingFiles.filter((f) => f.size > 0);
+      if (validFiles.length > 0) {
         const fd = new FormData();
         fd.set("projectSlug", params.slug);
         fd.set("sessionId", sessionId);
         fd.set("message", ctx);
-        for (const f of pendingFiles) fd.append("files", f, f.name);
+        for (const f of validFiles) fd.append("files", f, f.name);
         r = await fetch("/api/agent/chat", { method: "POST", credentials: "include", body: fd });
       } else {
         r = await fetch("/api/agent/chat", {
@@ -537,10 +538,12 @@ function TicketChatFramePageInner({ params }: { params: { slug: string; id: stri
             <div className="mb-1 flex max-h-14 flex-wrap gap-1 overflow-y-auto px-1 text-[10px]">
               {pendingFiles.map((f, i) => (
                 <span
-                  key={`${f.name}-${i}`}
-                  className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-slate-300"
+                  key={`${f.name}-${f.size}-${i}`}
+                  className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 ${f.size === 0 ? "border-red-700/60 bg-red-950/40 text-red-300" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                  title={f.size === 0 ? "Файл пустой — не будет отправлен" : `${f.name} · ${fmtFileSize(f.size)}`}
                 >
-                  {f.name}
+                  {f.size === 0 ? "⚠ " : "📎 "}{f.name}
+                  <span className="text-slate-600">{fmtFileSize(f.size)}</span>
                   <button
                     type="button"
                     className="text-slate-500 hover:text-red-300"
