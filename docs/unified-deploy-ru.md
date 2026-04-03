@@ -14,6 +14,10 @@
 
 - `./scripts/deploy-project.sh cursorrpa hoster`
 - `./scripts/deploy-project.sh komissionka hoster`
+- `./scripts/deploy-project.sh ourdiary hoster`
+- `./scripts/deploy-project.sh piranha-ai hoster`
+
+Публичные UI прикладных продуктов на поддоменах `*.shectory.ru` перечислены в [shectory-wikipedia.md](shectory-wikipedia.md) (таблица «Публичные URL прикладных приложений Shectory»).
 
 ## Правило про git
 

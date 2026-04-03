@@ -86,6 +86,8 @@ const UNIVERSAL_DEPLOY_BLOCK = [
   "- Ссылка на описательную часть проекта, сформированную агентом по факту содержания.",
   "- Ссылка на UI проекта.",
   "- Статус: dev | mvp | prod | archive.",
+  "",
+  "Канонические публичные URL прикладных приложений на shectory.ru — только поддомены (https://piranhahypervisor.shectory.ru, https://pingmaster.shectory.ru, https://syslog.shectory.ru, https://ourdiary.shectory.ru/); не указывать shectory.ru:4444/:4555 или LAN как основной UI.",
 ].join("\n");
 
 function workspaceRoot(): string {

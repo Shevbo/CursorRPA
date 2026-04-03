@@ -64,21 +64,54 @@ const ARCH_MERMAID_BY_SLUG: Record<string, string> = {
     Web -->|REST| API
     API -->|SQL| DB`,
   pingmaster: `flowchart LR
-    Dev["Разработчик"]
-    subgraph Pi["Shevbo-Pi 192.168.1.105"]
-      PM["PingMaster Next.js :4555"]
-      SL["syslog-srv UI :4444"]
+    U["Пользователь"]
+    subgraph VDS["VDS nginx TLS"]
+      PM["pingmaster.shectory.ru"]
+      SL["syslog.shectory.ru"]
     end
-    Mon["Мониторинг / Telegram bridge"]
-    Dev -->|HTTP| PM
-    Dev -->|HTTP| SL
-    Mon -->|SSH tailscale user shevbo| Pi`,
+    subgraph Pi["Raspberry Pi"]
+      PMp["PingMaster :4555"]
+      SLp["syslog UI :4444"]
+    end
+    U -->|HTTPS| PM
+    U -->|HTTPS| SL
+    PM -->|proxy| PMp
+    SL -->|proxy| SLp`,
   "piranha-ai": `flowchart LR
+    U["Пользователь"]
     Dev["Разработчик"]
-    App["PiranhaAI .NET / native"]
-    Repo["Git remote"]
-    Dev -->|IDE| App
-    Dev -->|git SSH| Repo`,
+    subgraph VDS["VDS nginx TLS"]
+      Edge["piranhahypervisor.shectory.ru"]
+    end
+    subgraph Hoster["Hoster Docker"]
+      App["Piranha backend :5000"]
+    end
+    U -->|HTTPS| Edge
+    Edge -->|proxy| App
+    Dev -->|IDE / git| App`,
+  "syslog-srv": `flowchart LR
+    U["Пользователь"]
+    subgraph VDS["VDS nginx TLS"]
+      Edge["syslog.shectory.ru"]
+    end
+    subgraph Pi["Raspberry Pi"]
+      UI["Next.js UI :4444"]
+      UDP["UDP syslog"]
+    end
+    U -->|HTTPS| Edge
+    Edge -->|proxy| UI`,
+  ourdiary: `flowchart LR
+    U["Пользователь"]
+    subgraph VDS["VDS nginx TLS"]
+      Edge["ourdiary.shectory.ru"]
+    end
+    subgraph Hoster["Hoster"]
+      Web["Next.js ourdiary"]
+      DB[(Postgres)]
+    end
+    U -->|HTTPS| Edge
+    Edge -->|proxy_pass| Web
+    Web -->|Prisma| DB`,
 };
 
 async function main() {
@@ -96,7 +129,7 @@ async function main() {
         categoryId: cat.id,
         label: "Shevbo-Pi",
         value:
-          "Raspberry Pi (LAN 192.168.1.105, Tailscale); пользователь shevbo; syslog-srv HTTP :4444, PingMaster HTTP :4555; снаружи — без TLS на портах (открывать http://)",
+          "Raspberry Pi (LAN, Tailscale, WireGuard 10.66.0.2); пользователь shevbo; сервисы :4444 (syslog UI) и :4555 (PingMaster). Публичный HTTPS: https://syslog.shectory.ru и https://pingmaster.shectory.ru через nginx на VDS.",
       },
     ],
   });
@@ -181,25 +214,49 @@ async function main() {
       slug: "piranha-ai",
       name: "PiranhaAI",
       stage: "dev",
-      uiUrl: null,
+      uiUrl: "https://piranhahypervisor.shectory.ru",
       workspacePath: "/home/shectory/workspaces/PiranhaAI",
       repoUrl: null,
-      stack: [".NET", "native"],
+      stack: [".NET", "native", "облачный UI"],
       notes:
-        "PiranhaAI: .NET / native. Назначение и модули — по продукту; prod URL и хосты не зафиксированы в реестре (portable).",
-      hosterRole: "по продукту",
+        "Piranha Hypervisor Cloud: публичный UI https://piranhahypervisor.shectory.ru (TLS на VDS, proxy на Hoster :5000). Регламент: PiranhaAI/docs/agent-handoff-piranhahypervisor.shectory.ru.md. Деплой: deploy-project.sh piranha-ai hoster.",
+      hosterRole: "Docker на Hoster; HTTPS на VDS",
     },
     {
       slug: "pingmaster",
       name: "PingMaster",
       stage: "requirements",
-      uiUrl: "http://192.168.1.105:4555",
+      uiUrl: "https://pingmaster.shectory.ru",
       workspacePath: "/home/shectory/workspaces/PingMaster",
       repoUrl: null,
       stack: ["Android", "Next.js (PingMaster web)", "Node (syslog-srv)"],
       notes:
-        "PingMaster (Android) + веб на Shevbo-Pi: HTTP http://192.168.1.105:4555; рядом syslog-srv UI http://192.168.1.105:4444. Пользователь на Pi: shevbo. Прод на Hoster пока нет.",
-      hosterRole: "нет prod на Hoster (requirements); dev на Shevbo-Pi",
+        "PingMaster: публичный веб https://pingmaster.shectory.ru. Связанный Syslog UI — отдельный проект/карточка, URL https://syslog.shectory.ru. Процессы на Raspberry Pi; наружу — nginx на VDS.",
+      hosterRole: "веб на Pi; TLS на VDS",
+    },
+    {
+      slug: "syslog-srv",
+      name: "Syslog Server",
+      stage: "prod",
+      uiUrl: "https://syslog.shectory.ru",
+      workspacePath: "/home/shectory/workspaces/syslog-srv",
+      repoUrl: null,
+      stack: ["Next.js", "Node", "UDP syslog", "SQLite"],
+      notes:
+        "Централизованный syslog: публичный UI https://syslog.shectory.ru. Документация: syslog-srv/docs/agent-handoff-syslog.shectory.ru.md.",
+      hosterRole: "UI на Pi; TLS на VDS",
+    },
+    {
+      slug: "ourdiary",
+      name: "Наш дневник",
+      stage: "dev",
+      uiUrl: "https://ourdiary.shectory.ru/",
+      workspacePath: "/home/shectory/workspaces/ourdiary",
+      repoUrl: "git@github.com:Shevbo/ourdiary.git",
+      stack: ["Next.js 16", "Prisma", "NextAuth", "Postgres"],
+      notes:
+        "Семейный дневник. Публичный URL https://ourdiary.shectory.ru/ (nginx на VDS → приложение на Hoster). RUNBOOK: ourdiary/RUNBOOK.md.",
+      hosterRole: "приложение на Hoster; TLS на VDS",
     },
   ] as const;
 
@@ -290,21 +347,86 @@ async function main() {
                       ],
                     },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [
+                      {
+                        id: "vds-public",
+                        name: "VDS (публичный HTTPS)",
+                        group: "VDS",
+                        role: "nginx → Hoster",
+                        host: "shectory-work",
+                        links: [{ label: "Piranha Cloud", url: "https://piranhahypervisor.shectory.ru" }],
+                      },
+                      {
+                        id: "hoster",
+                        name: "Hoster",
+                        group: "Hoster",
+                        role: "Docker piranha-ai :5000",
+                        host: "83.69.248.175",
+                        links: [],
+                      },
+                    ]
                 : p.slug === "pingmaster"
                   ? [
                       {
-                        id: "shevbo-pi",
-                        name: "Shevbo-Pi",
-                        group: "LAN",
-                        role: "PingMaster + syslog dev",
-                        host: "192.168.1.105 (Tailscale), Linux user shevbo",
+                        id: "vds-public",
+                        name: "VDS (публичный HTTPS)",
+                        group: "VDS",
+                        role: "nginx + Let’s Encrypt",
+                        host: "shectory-work",
                         links: [
-                          { label: "PingMaster HTTP", url: "http://192.168.1.105:4555" },
-                          { label: "Syslog UI HTTP", url: "http://192.168.1.105:4444" },
+                          { label: "PingMaster", url: "https://pingmaster.shectory.ru" },
+                          { label: "Syslog UI", url: "https://syslog.shectory.ru" },
                         ],
                       },
+                      {
+                        id: "shevbo-pi",
+                        name: "Raspberry Pi",
+                        group: "Pi",
+                        role: "Процессы :4555 / :4444",
+                        host: "WireGuard 10.66.0.2; пользователь shevbo",
+                        links: [],
+                      },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [
+                        {
+                          id: "vds-public",
+                          name: "VDS (публичный HTTPS)",
+                          group: "VDS",
+                          role: "nginx → Pi upstream",
+                          host: "shectory-work",
+                          links: [{ label: "Syslog UI", url: "https://syslog.shectory.ru" }],
+                        },
+                        {
+                          id: "shevbo-pi",
+                          name: "Raspberry Pi",
+                          group: "Pi",
+                          role: "UI + UDP syslog",
+                          host: "10.66.0.2",
+                          links: [],
+                        },
+                      ]
+                    : p.slug === "ourdiary"
+                      ? [
+                          {
+                            id: "vds-public",
+                            name: "VDS (публичный HTTPS)",
+                            group: "VDS",
+                            role: "nginx → Hoster",
+                            host: "shectory-work",
+                            links: [{ label: "Наш дневник", url: "https://ourdiary.shectory.ru/" }],
+                          },
+                          {
+                            id: "hoster",
+                            name: "Hoster",
+                            group: "Hoster",
+                            role: "Next.js + Postgres",
+                            host: "83.69.248.175",
+                            links: [],
+                          },
+                        ]
+                      : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -325,6 +447,11 @@ async function main() {
                     { id: "api", name: "Komissionka API", kind: "api", serverId: "hoster" },
                     { id: "db", name: "Postgres (komissionka_db)", kind: "db", serverId: "hoster" },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [
+                      { id: "browser", name: "Пользователь", kind: "external" },
+                      { id: "ui", name: "Piranha Cloud (бэкенд)", kind: "ui", serverId: "hoster" },
+                    ]
                 : p.slug === "pingmaster"
                   ? [
                       { id: "dev", name: "Разработчик / браузер", kind: "external" },
@@ -332,19 +459,31 @@ async function main() {
                         id: "pm-web",
                         name: "PingMaster Next.js",
                         kind: "ui",
-                        host: "192.168.1.105:4555",
+                        host: "https://pingmaster.shectory.ru → Pi :4555",
                         serverId: "shevbo-pi",
                       },
                       {
                         id: "syslog-ui",
-                        name: "syslog-srv UI Next.js",
+                        name: "syslog-srv UI (карточка syslog-srv)",
                         kind: "ui",
-                        host: "192.168.1.105:4444",
+                        host: "https://syslog.shectory.ru → Pi :4444",
                         serverId: "shevbo-pi",
                       },
                       { id: "android", name: "Android приложение PingMaster", kind: "mobile" },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [
+                        { id: "browser", name: "Пользователь", kind: "external" },
+                        { id: "ui", name: "Syslog Next.js UI", kind: "ui", serverId: "shevbo-pi" },
+                        { id: "ingest", name: "UDP syslog", kind: "worker", serverId: "shevbo-pi" },
+                      ]
+                    : p.slug === "ourdiary"
+                      ? [
+                          { id: "browser", name: "Пользователь", kind: "external" },
+                          { id: "ui", name: "ourdiary Next.js", kind: "ui", serverId: "hoster" },
+                          { id: "db", name: "Postgres", kind: "db", serverId: "hoster" },
+                        ]
+                      : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -362,12 +501,21 @@ async function main() {
                     { from: "ui", to: "api", label: "API" },
                     { from: "api", to: "db", label: "SQL" },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [{ from: "browser", to: "ui", label: "HTTPS" }]
                 : p.slug === "pingmaster"
                   ? [
-                      { from: "dev", to: "pm-web", label: "HTTP :4555" },
-                      { from: "dev", to: "syslog-ui", label: "HTTP :4444" },
+                      { from: "dev", to: "pm-web", label: "HTTPS" },
+                      { from: "dev", to: "syslog-ui", label: "HTTPS" },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [{ from: "browser", to: "ui", label: "HTTPS" }]
+                    : p.slug === "ourdiary"
+                      ? [
+                          { from: "browser", to: "ui", label: "HTTPS" },
+                          { from: "ui", to: "db", label: "SQL" },
+                        ]
+                      : [],
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",
@@ -428,21 +576,86 @@ async function main() {
                       ],
                     },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [
+                      {
+                        id: "vds-public",
+                        name: "VDS (публичный HTTPS)",
+                        group: "VDS",
+                        role: "nginx → Hoster",
+                        host: "shectory-work",
+                        links: [{ label: "Piranha Cloud", url: "https://piranhahypervisor.shectory.ru" }],
+                      },
+                      {
+                        id: "hoster",
+                        name: "Hoster",
+                        group: "Hoster",
+                        role: "Docker piranha-ai :5000",
+                        host: "83.69.248.175",
+                        links: [],
+                      },
+                    ]
                 : p.slug === "pingmaster"
                   ? [
                       {
-                        id: "shevbo-pi",
-                        name: "Shevbo-Pi",
-                        group: "LAN",
-                        role: "PingMaster + syslog dev",
-                        host: "192.168.1.105 (Tailscale), Linux user shevbo",
+                        id: "vds-public",
+                        name: "VDS (публичный HTTPS)",
+                        group: "VDS",
+                        role: "nginx + Let’s Encrypt",
+                        host: "shectory-work",
                         links: [
-                          { label: "PingMaster HTTP", url: "http://192.168.1.105:4555" },
-                          { label: "Syslog UI HTTP", url: "http://192.168.1.105:4444" },
+                          { label: "PingMaster", url: "https://pingmaster.shectory.ru" },
+                          { label: "Syslog UI", url: "https://syslog.shectory.ru" },
                         ],
                       },
+                      {
+                        id: "shevbo-pi",
+                        name: "Raspberry Pi",
+                        group: "Pi",
+                        role: "Процессы :4555 / :4444",
+                        host: "WireGuard 10.66.0.2; пользователь shevbo",
+                        links: [],
+                      },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [
+                        {
+                          id: "vds-public",
+                          name: "VDS (публичный HTTPS)",
+                          group: "VDS",
+                          role: "nginx → Pi upstream",
+                          host: "shectory-work",
+                          links: [{ label: "Syslog UI", url: "https://syslog.shectory.ru" }],
+                        },
+                        {
+                          id: "shevbo-pi",
+                          name: "Raspberry Pi",
+                          group: "Pi",
+                          role: "UI + UDP syslog",
+                          host: "10.66.0.2",
+                          links: [],
+                        },
+                      ]
+                    : p.slug === "ourdiary"
+                      ? [
+                          {
+                            id: "vds-public",
+                            name: "VDS (публичный HTTPS)",
+                            group: "VDS",
+                            role: "nginx → Hoster",
+                            host: "shectory-work",
+                            links: [{ label: "Наш дневник", url: "https://ourdiary.shectory.ru/" }],
+                          },
+                          {
+                            id: "hoster",
+                            name: "Hoster",
+                            group: "Hoster",
+                            role: "Next.js + Postgres",
+                            host: "83.69.248.175",
+                            links: [],
+                          },
+                        ]
+                      : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -463,6 +676,11 @@ async function main() {
                     { id: "api", name: "Komissionka API", kind: "api", serverId: "hoster" },
                     { id: "db", name: "Postgres (komissionka_db)", kind: "db", serverId: "hoster" },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [
+                      { id: "browser", name: "Пользователь", kind: "external" },
+                      { id: "ui", name: "Piranha Cloud (бэкенд)", kind: "ui", serverId: "hoster" },
+                    ]
                 : p.slug === "pingmaster"
                   ? [
                       { id: "dev", name: "Разработчик / браузер", kind: "external" },
@@ -470,19 +688,31 @@ async function main() {
                         id: "pm-web",
                         name: "PingMaster Next.js",
                         kind: "ui",
-                        host: "192.168.1.105:4555",
+                        host: "https://pingmaster.shectory.ru → Pi :4555",
                         serverId: "shevbo-pi",
                       },
                       {
                         id: "syslog-ui",
-                        name: "syslog-srv UI Next.js",
+                        name: "syslog-srv UI (карточка syslog-srv)",
                         kind: "ui",
-                        host: "192.168.1.105:4444",
+                        host: "https://syslog.shectory.ru → Pi :4444",
                         serverId: "shevbo-pi",
                       },
                       { id: "android", name: "Android приложение PingMaster", kind: "mobile" },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [
+                        { id: "browser", name: "Пользователь", kind: "external" },
+                        { id: "ui", name: "Syslog Next.js UI", kind: "ui", serverId: "shevbo-pi" },
+                        { id: "ingest", name: "UDP syslog", kind: "worker", serverId: "shevbo-pi" },
+                      ]
+                    : p.slug === "ourdiary"
+                      ? [
+                          { id: "browser", name: "Пользователь", kind: "external" },
+                          { id: "ui", name: "ourdiary Next.js", kind: "ui", serverId: "hoster" },
+                          { id: "db", name: "Postgres", kind: "db", serverId: "hoster" },
+                        ]
+                      : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -500,12 +730,21 @@ async function main() {
                     { from: "ui", to: "api", label: "API" },
                     { from: "api", to: "db", label: "SQL" },
                   ]
+                : p.slug === "piranha-ai"
+                  ? [{ from: "browser", to: "ui", label: "HTTPS" }]
                 : p.slug === "pingmaster"
                   ? [
-                      { from: "dev", to: "pm-web", label: "HTTP :4555" },
-                      { from: "dev", to: "syslog-ui", label: "HTTP :4444" },
+                      { from: "dev", to: "pm-web", label: "HTTPS" },
+                      { from: "dev", to: "syslog-ui", label: "HTTPS" },
                     ]
-                  : [],
+                  : p.slug === "syslog-srv"
+                    ? [{ from: "browser", to: "ui", label: "HTTPS" }]
+                    : p.slug === "ourdiary"
+                      ? [
+                          { from: "browser", to: "ui", label: "HTTPS" },
+                          { from: "ui", to: "db", label: "SQL" },
+                        ]
+                      : [],
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",

@@ -7,6 +7,19 @@
 - **Портальные и пользовательские приложения** — по умолчанию: **welcome-экран с логином**, **единый каталог пользователей** портала Shectory (не изобретать отдельную регистрацию без согласования).
 - **Внутренние и сервисные интерфейсы** (например, админка syslog, технические дашборды) могут **не включать полноценный welcome с логином**, если это зафиксировано в архитектуре проекта и не противоречит требованиям безопасности. При сомнениях — уточнять у пользователя и сверяться с карточкой проекта.
 
+## Публичные URL прикладных приложений Shectory
+
+Все перечисленные продукты открываются **только по HTTPS на поддомене** `*.shectory.ru` (TLS и маршрутизация на **VDS `shectory-work`**, nginx + Let’s Encrypt). В инструкциях для людей и в карточках портала **не использовать** устаревшие варианты вроде **`https://shectory.ru:4444`**, **`https://shectory.ru:4555`** или «голые» LAN-URL как основной вход.
+
+| Продукт | Канонический URL |
+|--------|-------------------|
+| Piranha Hypervisor Cloud | [https://piranhahypervisor.shectory.ru](https://piranhahypervisor.shectory.ru) |
+| PingMaster | [https://pingmaster.shectory.ru](https://pingmaster.shectory.ru) |
+| Syslog Server (UI) | [https://syslog.shectory.ru](https://syslog.shectory.ru) |
+| Наш дневник (ourdiary) | [https://ourdiary.shectory.ru/](https://ourdiary.shectory.ru/) |
+
+Портал оркестратора: **`https://shectory.ru`** (apex, не поддомен приложения). Технические детали прокси (Pi, WireGuard, upstream) — в разделе «Сетевая инфраструктура Pi ↔ VDS» ниже.
+
 ## Каталог пользователей, группы доступа и роли
 
 Цель: **единая учётка пользователя** и **единые универсальные группы доступа** на уровне портала, чтобы прикладные проекты не заводили «свой логин» и не плодили разрозненные роли.
@@ -33,7 +46,9 @@
 ## Инфраструктура и данные
 
 - **VDS Shectory = хост `shectory-work`** — один и тот же сервер: SSH **`ssh shectory-work`** (пользователь **`shectory`**, публичный IPv4 **`83.69.248.77`**). В текстах ниже **«VDS»**, **«эта VDS»**, **«на сервере портала»** — всегда этот хост, **не** Hoster. Здесь лежит **рабочий клон** монолита `CursorRPA` (например `/home/shectory/workspaces/CursorRPA`), крутятся **Next.js Shectory Portal** (`shectory-portal/`), **Cursor Agent CLI**, **nginx** (в т.ч. `shectory.ru`, поддомены, прокси на Pi), **WireGuard** (`10.66.0.1`). **Публичный UI** `https://shectory.ru` собирается и выкладывается **здесь**: агент после правок запускает **`bash scripts/deploy-shectory-portal.sh`** из **корня этого клона**. Nginx проксирует портал на `next start` (по умолчанию 3000), см. `scripts/nginx-shectory-portal.conf`. Скрипт деплоя перезапускает **user unit** `shectory-portal.service` при необходимости и **освобождает порт** перед рестартом, если на нём остался чужой `next-server` (иначе новая сборка не подхватывается и CSS даёт 404). Задачи на самой VDS (nginx, certbot, `wg-quick`, проверки `curl` до Pi) агент выполняет **сам** через **`ssh shectory-work`**, без перекладывания на пользователя.
-- **Hoster** — отдельный прод-хост (Postgres, часть бэкендов прикладных проектов, pgAdmin и т.д.); не смешивать с **VDS (`shectory-work`)**. Публичные поддомены **`*.shectory.ru`** для приложений на hoster (в т.ч. **`https://ourdiary.shectory.ru`**) терминируются **nginx + Let's Encrypt на VDS (`shectory-work`)** и проксируются на локальный порт процесса на этом же сервере (ourdiary → `127.0.0.1:3002`); шаблон vhost — `ourdiary/scripts/nginx-ourdiary.shectory.ru.conf.example`, порядок настройки — `ourdiary/RUNBOOK.md` («Внешний URL»).
+- **nginx на VDS: SNI и портал:** у каждого HTTPS-блока (`listen 443 ssl`) для своего имени должен быть явный **`server_name`** (certbot иногда оставляет блок только с `listen` и `ssl_certificate` без `server_name`). Без этого SNI **`shectory.ru`** не попадает в нужный vhost → при **`default_server` с `ssl_reject_handshake`** клиенты (в т.ч. **Python `urllib`** к `SHECTORY_AUTH_BASE`) получают **`TLSV1_UNRECOGNIZED_NAME`**. Файл **`/etc/nginx/sites-enabled/shectory.ru`** должен быть **symlink** на **`sites-available/shectory.ru`**, а не устаревшая копия — иначе правки в `sites-available` не подхватываются.
+- **Hoster** — отдельный прод-хост (Postgres, часть бэкендов прикладных проектов, pgAdmin и т.д.); не смешивать с **VDS (`shectory-work`)**. Публичные поддомены **`*.shectory.ru`** для приложений на hoster (в т.ч. **`https://ourdiary.shectory.ru/`**) терминируются **nginx + Let's Encrypt на VDS (`shectory-work`)** и проксируются на локальный порт процесса на этом же сервере (ourdiary → `127.0.0.1:3002`); шаблон vhost — `ourdiary/scripts/nginx-ourdiary.shectory.ru.conf.example`, порядок настройки — `ourdiary/RUNBOOK.md` («Внешний URL»).
+- **Piranha Hypervisor Cloud** (`https://piranhahypervisor.shectory.ru`): бэкенд на **hoster** в Docker (**контейнер `piranha-ai`**, порт **5000**). DNS **A** `piranhahypervisor` → публичный IPv4 **`shectory-work`** (`83.69.248.77`); на VDS — отдельный vhost **443** + Let’s Encrypt, **`proxy_pass http://<IPv4 hoster>:5000`** с **`X-Forwarded-*`**. На hoster **5000/tcp** разрешить **только с IP VDS**; в окружении контейнера **`PIRANHA_COOKIE_SECURE=1`**. Деплой с рабочей станции: **`CursorRPA/scripts/deploy-project.sh piranha-ai hoster`** (агент при необходимости сам делает **`ssh shectory-work`** / **`ssh hoster`**). Пошаговый регламент и шаблон nginx: **`PiranhaAI/docs/agent-handoff-piranhahypervisor.shectory.ru.md`**.
 - **Хостинг приложений и окружений** — см. карточки проектов и `scripts/deploy-*`; для портала норма: **локальный деплой на VDS (`shectory-work`)** (скрипт выше).
 - **Базы данных** — на **hoster**; доступ к БД в коде приложений — **только через Prisma** (схема в репозитории, `prisma/schema.prisma`), без произвольного SQL в прикладном коде, кроме миграций и осознанных исключений с документированием.
 - Не раздувать `process.env` и аргументы процессов при вызове CLI: длинные промпты передавать через **stdin**, а не в argv.
@@ -108,7 +123,7 @@
     - `HEALTH_REPORT_INTERVAL_SEC=3600` — регулярный отчёт админам раз в час (проверки остаются каждые 5 минут).
   - Алерты: при смене состояния (down/recovered / смена статуса) бот отправляет уведомление «Изменение health-состояния».
   - Pi:
-    - TCP-проверки Syslog/PingMaster включаются, если задан `PI_MONITOR_HOST` или `PI_MONITOR_HOSTS` (через запятую, например `192.168.1.105,shectory.ru`).
+    - TCP-проверки Syslog/PingMaster включаются, если задан `PI_MONITOR_HOST` или `PI_MONITOR_HOSTS` (через запятую). На **каждом** хосте бот проверяет **оба** порта (`PI_SYSLOG_PORT`, `PI_PINGMASTER_PORT`); типично это **LAN IP Pi** и порты **4444/4555**. Публичные поддомены **https://pingmaster.shectory.ru** / **https://syslog.shectory.ru** в отчётах бота не подставляются автоматически — см. `services/telegram-bridge/config.example.env`.
     - Частота проверки TCP: `PI_MONITOR_INTERVAL_SEC=300` (каждые 5 минут).
     - Частота регулярного отчёта по Pi: `PI_MONITOR_REPORT_INTERVAL_SEC=3600` (раз в час).
     - Уведомления о сбое: при переходе `OK → DOWN` по конкретному `host:port` отправляется **одно** сообщение (без спама до восстановления).
@@ -256,6 +271,10 @@
 Файл `.cursor/rules/shectory-core.mdc` с `alwaysApply: true` — применяется в каждой сессии Cursor в workspace `CursorRPA`. Содержит строгие правила: коммит+деплой, обновление Wikipedia, деплой только через скрипт, БД через Prisma, запрет pkill без каталога, единый каталог пользователей.
 
 Шаблон для других workspaces: скопировать `.cursor/rules/shectory-core.mdc` и адаптировать пути деплоя.
+
+### Канонические поддомены прикладных приложений (апрель 2026)
+
+Публичные UI прикладных продуктов Shectory — **только** поддомены `*.shectory.ru` (см. таблицу в начале документа). Убраны из пользовательских текстов и сидов портала ссылки на `shectory.ru:4444` / `:4555` и LAN `http://192.168…` как «главный вход»; LAN и порты на VDS остаются в runbook’ах для админов и отладки.
 
 ## Версия
 

@@ -85,7 +85,8 @@ HEALTH_HDD_CRIT_FREE_PCT = float(os.environ.get("HEALTH_HDD_CRIT_FREE_PCT", "5")
 # Raspberry Pi: health + TCP checks (Syslog 4444, Pingmaster 4555)
 # Проверка каждые PI_MONITOR_INTERVAL_SEC (по умолчанию 5 мин).
 # Регулярный отчёт раз в PI_MONITOR_REPORT_INTERVAL_SEC (по умолчанию 1 час).
-# Список хостов для TCP-проверок: PI_MONITOR_HOSTS="192.168.1.105,shectory.ru" (back-compat: PI_MONITOR_HOST).
+# Список хостов для TCP-проверок (на каждом — оба порта syslog/pingmaster). Пример LAN: PI_MONITOR_HOSTS=192.168.1.105
+# Публичные UI: https://pingmaster.shectory.ru и https://syslog.shectory.ru (back-compat: PI_MONITOR_HOST).
 PI_MONITOR_HOST = os.environ.get("PI_MONITOR_HOST", "").strip()
 PI_MONITOR_HOSTS_RAW = os.environ.get("PI_MONITOR_HOSTS", "").strip()
 PI_MONITOR_REPORT_INTERVAL_SEC = int(os.environ.get("PI_MONITOR_REPORT_INTERVAL_SEC", str(60 * 60)))

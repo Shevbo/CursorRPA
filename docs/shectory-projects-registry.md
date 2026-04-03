@@ -6,7 +6,7 @@
 
 Обновляйте при смене папок клонов или `git remote`.
 
-**Последнее исследование:** 2026-03-31 (общий хост с Node: **`docs/raspi-safe-node-process-management-ru.md`**, **`scripts/kill-node-in-workdir.sh`**; ранее — структура `~/workspaces`, `prisma/seed.ts`, SSH `shectory-work`).
+**Последнее исследование:** 2026-04-02 (канонические публичные URL прикладных приложений — поддомены `*.shectory.ru`, см. **`docs/shectory-wikipedia.md`**; общий хост с Node: **`docs/raspi-safe-node-process-management-ru.md`**, **`scripts/kill-node-in-workdir.sh`**).
 
 ---
 
@@ -44,9 +44,10 @@ flowchart TB
 | ----------- | ---------------- | ---------------- | -------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------- | --------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | cursor-rpa  | CursorRPA (монолит) | dev + portal prod | `https://shectory.ru` (UI) | `/home/shectory/workspaces/CursorRPA`   | `https://github.com/Shevbo/CursorRPA.git`                                               | ok (`git ls-remote`)       | Web UI портала на VDS             | docs, scripts, Next.js в `shectory-portal/`, Python bridge | Один репозиторий: доки, скрипты, **Shectory Portal** (`shectory-portal/`), **Telegram bridge**. Публичный UI: `shectory.ru`. Unit: `shectory-portal.service`. |
 | komissionka | Комиссионка      | dev / prod split | `https://komissionka92.ru` | `/home/shectory/workspaces/komissionka` | `https://github.com/Shevbo/komissionka-app.git`                                         | ok (`git ls-remote`)       | prod DB/UI/API на Hoster          | Prisma, Postgres, web  | Прод URL: `https://komissionka92.ru`.                                                                                           |
-| piranha-ai  | PiranhaAI        | dev              | `-`                        | `/home/shectory/workspaces/PiranhaAI`   | *нет `.git` в корне проекта (portable)*                                                 | n/a                        | по продукту                       | .NET / native          | Проект в portable-режиме, remote в корне не зафиксирован.                                                                       |
-| pingmaster  | PingMaster       | requirements     | `-`                        | `/home/shectory/workspaces/PingMaster`  | локальный git инициализирован (remote не настроен)                                      | partial                    | нет prod на Hoster (requirements) | Android                | Workspace приведён к базовому стандарту (README, RUNBOOK, ARCHITECTURE, scripts/deploy.sh). Нужны remote и прод-инфра.      |
-| ourdiary    | Наш дневник (ourdiary) | dev         | `https://ourdiary.shectory.ru` (nginx→`127.0.0.1:3002`, PM2) | `/home/shectory/workspaces/ourdiary`    | `git@github.com:Shevbo/ourdiary.git`                                                    | ok                         | prod на Hoster (Postgres локально) | Next.js 16, Prisma, NextAuth | Публичный URL и nginx: **`ourdiary/RUNBOOK.md`** → «Внешний URL». Первичная установка: **`scripts/bootstrap-hoster.sh`**. Деплой: **`deploy-project.sh ourdiary hoster`**. PM2: **`ecosystem.config.cjs`**, порт **3002**. |
+| piranha-ai  | PiranhaAI        | dev              | `https://piranhahypervisor.shectory.ru` | `/home/shectory/workspaces/PiranhaAI`   | *нет `.git` в корне проекта (portable)*                                                 | n/a                        | бэкенд в Docker на Hoster; HTTPS на VDS | .NET / native, облачный UI | Публичный UI — поддомен на VDS (nginx → Hoster :5000). Регламент: **`PiranhaAI/docs/agent-handoff-piranhahypervisor.shectory.ru.md`**. Деплой: **`deploy-project.sh piranha-ai hoster`**. |
+| pingmaster  | PingMaster       | requirements     | `https://pingmaster.shectory.ru` | `/home/shectory/workspaces/PingMaster`  | локальный git инициализирован (remote не настроен)                                      | partial                    | веб-UI на Pi, снаружи — VDS nginx | Android + Next.js web | Публичный вход — **`https://pingmaster.shectory.ru`**. Процесс на Pi (порт **4555**), прокси с **`shectory-work`**. См. **`docs/shectory-wikipedia.md`** (Pi ↔ VDS). |
+| syslog-srv  | Syslog Server    | prod (UI)        | `https://syslog.shectory.ru` | `/home/shectory/workspaces/syslog-srv`  | по факту клона на Pi/VDS                                                                | partial                    | UI на Pi, HTTPS на VDS            | Next.js, UDP syslog      | Публичный вход — **`https://syslog.shectory.ru`**. Чеклист: **`syslog-srv/docs/agent-handoff-syslog.shectory.ru.md`**. |
+| ourdiary    | Наш дневник (ourdiary) | dev         | `https://ourdiary.shectory.ru/` (nginx на VDS → `127.0.0.1:3002`, PM2 на Hoster) | `/home/shectory/workspaces/ourdiary`    | `git@github.com:Shevbo/ourdiary.git`                                                    | ok                         | prod на Hoster (Postgres локально) | Next.js 16, Prisma, NextAuth | Публичный URL только поддомен; внутренний порт и PM2 — **`ourdiary/RUNBOOK.md`** («Внешний URL»). Деплой: **`deploy-project.sh ourdiary hoster`**. |
 
 
 ---
@@ -60,6 +61,7 @@ flowchart TB
 | `/home/shectory/workspaces/komissionka`  | git-клон продукта komissionka                   | рабочая копия проекта komissionka                |
 | `/home/shectory/workspaces/PiranhaAI`    | проект в portable-режиме                         | рабочая копия проекта PiranhaAI                  |
 | `/home/shectory/workspaces/PingMaster`   | базовый bootstrap по стандарту Shectory          | рабочая копия проекта PingMaster                 |
+| `/home/shectory/workspaces/syslog-srv`   | syslog UI + приём UDP (часто деплой на Pi)        | репозиторий **syslog-srv**                       |
 | `/home/shectory/workspaces/ourdiary`     | семейный дневник: лента, календарь, расходы, TV  | репозиторий **ourdiary**                         |
 
 
@@ -69,5 +71,5 @@ flowchart TB
 
 - `path_shectory`: единый корень `~/workspaces` (пользователь `shectory` на VDS). Имена каталогов на VDS синхронизируются с порталом из файловой системы; мета-проект `shectory-portal` в БД задаётся в [prisma/seed.ts](../prisma/seed.ts). Отдельная строка реестра «shectory-portal» как соседний клон **не используется** — UI входит в монолит `CursorRPA`. Схема БД: [prisma-cursorrpa.md](prisma-cursorrpa.md).
 - `git_remote`: без токенов в URL; при приватном доступе — `ssh: git@github.com:...` без ключей в файле.
-- `app_url`: отдельная колонка для публичного URL приложения (если есть). Для внутренних сервисов использовать `-`.
+- `app_url`: **канонический публичный HTTPS-URL** приложения на поддомене `*.shectory.ru` (если есть). Не указывать здесь `shectory.ru:порт` или LAN `http://192.168…` как основной адрес. Для сервисов без публичного UI — `-`.
 

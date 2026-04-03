@@ -184,7 +184,11 @@ journalctl -u wg-monitor.service -f
 # Логи autossh на Pi
 journalctl -u autossh-pi-reverse-tunnel.service -f
 
-# Тест портов
-curl -v --max-time 5 http://shectory.ru:4444/
-curl -v --max-time 5 http://shectory.ru:4555/
+# Публичные UI (канон: поддомены, TLS на VDS)
+curl -sI --max-time 8 https://syslog.shectory.ru/ | head -5
+curl -sI --max-time 8 https://pingmaster.shectory.ru/ | head -5
+
+# Внутреннее: upstream к Pi (на shectory-work), если включены listen :4444/:4555 — см. conf.d/pi-services.conf
+# curl -v --max-time 5 http://127.0.0.1:24444/
+# curl -v --max-time 5 http://127.0.0.1:24555/
 ```
