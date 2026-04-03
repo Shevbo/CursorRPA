@@ -56,21 +56,36 @@ apt-get update -qq
 apt-get install -y wireguard-tools
 
 WG_CONF="/etc/wireguard/wg0.conf"
+NEED_NEW_WG_CONF=false
+
+extract_privkey_from_wg_conf() {
+  grep -iE '^[[:space:]]*PrivateKey[[:space:]]*=' "$WG_CONF" 2>/dev/null | head -1 \
+    | sed -E 's/^[[:space:]]*[Pp]rivate[Kk]ey[[:space:]]*=[[:space:]]*//;s/[[:space:]]+$//;s/#.*$//' \
+    | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
 if [[ -f "$WG_CONF" ]]; then
   echo "WireGuard config already exists, skipping key generation."
-  # Нельзя брать «строку после [Interface]» — там часто Address; читаем именно PrivateKey.
-  PI_PRIVKEY=$(grep -E '^[[:space:]]*PrivateKey[[:space:]]*=' "$WG_CONF" | head -1 | sed -E 's/^[[:space:]]*PrivateKey[[:space:]]*=[[:space:]]*//;s/[[:space:]]+$//')
-  if [[ -n "$PI_PRIVKEY" ]]; then
-    PI_PUBKEY=$(printf '%s\n' "$PI_PRIVKEY" | wg pubkey) || { echo "ERROR: PrivateKey в $WG_CONF некорректен для wg pubkey" >&2; exit 1; }
-  elif wg show wg0 public-key &>/dev/null; then
+  PI_PRIVKEY=$(extract_privkey_from_wg_conf)
+  PI_PUBKEY=""
+  if [[ -n "$PI_PRIVKEY" ]] && PI_PUBKEY=$(printf '%s\n' "$PI_PRIVKEY" | wg pubkey 2>/dev/null); then
+    :
+  elif command -v wg >/dev/null && wg show wg0 public-key &>/dev/null; then
     PI_PUBKEY=$(wg show wg0 public-key)
-  else
-    echo "ERROR: в $WG_CONF нет строки PrivateKey и интерфейс wg0 не поднят." >&2
-    exit 1
+  fi
+  if [[ -z "${PI_PUBKEY:-}" ]]; then
+    echo "WARN: из $WG_CONF не получается восстановить ключ (битый/пустой PrivateKey?) — делаю бэкап и создаю новую пару." >&2
+    cp -a "$WG_CONF" "${WG_CONF}.bad.$(date +%Y%m%d%H%M%S)"
+    rm -f "$WG_CONF"
+    NEED_NEW_WG_CONF=true
   fi
 else
+  NEED_NEW_WG_CONF=true
+fi
+
+if [[ "$NEED_NEW_WG_CONF" == true ]]; then
   PI_PRIVKEY=$(wg genkey)
-  PI_PUBKEY=$(echo "$PI_PRIVKEY" | wg pubkey)
+  PI_PUBKEY=$(printf '%s\n' "$PI_PRIVKEY" | wg pubkey)
 
   cat > "$WG_CONF" <<EOF
 [Interface]
