@@ -54,6 +54,9 @@ if [[ "$DO_DB_SEED" == "1" ]]; then
   npm run -s db:seed
 fi
 
+echo "[deploy] prisma migrate deploy (portal DB; требуется для /settings и admin API)"
+(cd "$PORTAL_DIR" && npx prisma migrate deploy --schema=../prisma/schema.prisma)
+
 echo "[deploy] portal build"
 npm run -s build --prefix shectory-portal
 

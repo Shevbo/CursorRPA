@@ -46,3 +46,7 @@
 - создать в репозитории проекта `scripts/deploy.sh` (или `scripts/deploy-hoster.sh`)
 - и зафиксировать конкретные команды рестарта (pm2/systemctl/docker/nginx) в `RUNBOOK.md` проекта
 
+## Портал Shectory (миграции Prisma на VDS)
+
+После изменений в `prisma/migrations` монолита на **`shectory-work`** выполните `npx prisma migrate deploy` из каталога `shectory-portal` (см. флаг `--schema` в [shectory-wikipedia.md](shectory-wikipedia.md) → «Настройки портала»). Иначе `/settings` и API админки могут отдавать 5xx.
+
