@@ -130,6 +130,12 @@
   - Upstream приоритет: WireGuard `10.66.0.2` → autossh `127.0.0.1:2xxxx` → Tailscale `100.79.47.61` (last resort).
   - `:4444` — Syslog Pi, `:4555` — PingMaster Pi.
 
+- **Публичный URL PingMaster (`https://pingmaster.shectory.ru`)**:
+  - Отдельный vhost: `/etc/nginx/sites-available/pingmaster.shectory.ru` → тот же `upstream pi_pingmaster` (WG **10.66.0.2:4555** и fallback из `pi-services.conf`).
+  - DNS: **A** `pingmaster.shectory.ru` → публичный IPv4 **этой VDS** (как у `shectory.ru`). Пока у Let's Encrypt **NXDOMAIN**, выпуск сертификата невозможен — дождаться **глобальной** записи (`dig +short pingmaster.shectory.ru @8.8.8.8`), затем на VDS:  
+    `sudo certbot --nginx -d pingmaster.shectory.ru --non-interactive --agree-tos -m bshevelev@mail.ru --redirect`
+  - Пир Pi в `/etc/wireguard/wg0.conf` должен быть в файле (секция `[Peer]`), иначе после `systemctl restart wg-quick@wg0` пир пропадёт.
+
 - **Мониторинг VPN**:
   - `wg-monitor.timer` на VDS — каждую минуту проверяет handshake WireGuard и доступность портов.
   - При смене статуса (`ok`/`fallback`/`down`) отправляет Telegram-алерт.
