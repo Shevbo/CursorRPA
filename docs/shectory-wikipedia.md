@@ -32,9 +32,9 @@
 
 ## Инфраструктура и данные
 
-- **VDS Shectory (эта машина)** — хост, на котором лежит **рабочий клон** монолита `CursorRPA` (например `/home/shectory/workspaces/CursorRPA`), крутятся **Next.js Shectory Portal** (`shectory-portal/`), **Cursor Agent CLI**, скрипты и часть сервисов. **Публичный UI** `https://shectory.ru` собирается и выкладывается **здесь же**: агент после правок запускает **`bash scripts/deploy-shectory-portal.sh`** из **корня этого клона** — без отдельного «SSH на другой VDS» для портала. Nginx на этой же машине проксирует на `next start` (порт по умолчанию 3000), см. `scripts/nginx-shectory-portal.conf`. Скрипт деплоя перезапускает **user unit** `shectory-portal.service` при необходимости и **освобождает порт** перед рестартом, если на нём остался чужой `next-server` (иначе новая сборка не подхватывается и CSS даёт 404).
-- **Hoster** — отдельный прод-хост (Postgres, часть бэкендов прикладных проектов, pgAdmin и т.д.); не смешивать с VDS портала, если в регламенте не сказано иное. Публичные поддомены **`*.shectory.ru`** для приложений на hoster (в т.ч. **`https://ourdiary.shectory.ru`**) терминируются **nginx + Let's Encrypt** на этой машине и проксируются на локальный порт процесса (ourdiary → `127.0.0.1:3002`); шаблон vhost — `ourdiary/scripts/nginx-ourdiary.shectory.ru.conf.example`, порядок настройки — `ourdiary/RUNBOOK.md` («Внешний URL»).
-- **Хостинг приложений и окружений** — см. карточки проектов и `scripts/deploy-*`; для портала норма: **локальный деплой на VDS** (скрипт выше).
+- **VDS Shectory = хост `shectory-work`** — один и тот же сервер: SSH **`ssh shectory-work`** (пользователь **`shectory`**, публичный IPv4 **`83.69.248.77`**). В текстах ниже **«VDS»**, **«эта VDS»**, **«на сервере портала»** — всегда этот хост, **не** Hoster. Здесь лежит **рабочий клон** монолита `CursorRPA` (например `/home/shectory/workspaces/CursorRPA`), крутятся **Next.js Shectory Portal** (`shectory-portal/`), **Cursor Agent CLI**, **nginx** (в т.ч. `shectory.ru`, поддомены, прокси на Pi), **WireGuard** (`10.66.0.1`). **Публичный UI** `https://shectory.ru` собирается и выкладывается **здесь**: агент после правок запускает **`bash scripts/deploy-shectory-portal.sh`** из **корня этого клона**. Nginx проксирует портал на `next start` (по умолчанию 3000), см. `scripts/nginx-shectory-portal.conf`. Скрипт деплоя перезапускает **user unit** `shectory-portal.service` при необходимости и **освобождает порт** перед рестартом, если на нём остался чужой `next-server` (иначе новая сборка не подхватывается и CSS даёт 404). Задачи на самой VDS (nginx, certbot, `wg-quick`, проверки `curl` до Pi) агент выполняет **сам** через **`ssh shectory-work`**, без перекладывания на пользователя.
+- **Hoster** — отдельный прод-хост (Postgres, часть бэкендов прикладных проектов, pgAdmin и т.д.); не смешивать с **VDS (`shectory-work`)**. Публичные поддомены **`*.shectory.ru`** для приложений на hoster (в т.ч. **`https://ourdiary.shectory.ru`**) терминируются **nginx + Let's Encrypt на VDS (`shectory-work`)** и проксируются на локальный порт процесса на этом же сервере (ourdiary → `127.0.0.1:3002`); шаблон vhost — `ourdiary/scripts/nginx-ourdiary.shectory.ru.conf.example`, порядок настройки — `ourdiary/RUNBOOK.md` («Внешний URL»).
+- **Хостинг приложений и окружений** — см. карточки проектов и `scripts/deploy-*`; для портала норма: **локальный деплой на VDS (`shectory-work`)** (скрипт выше).
 - **Базы данных** — на **hoster**; доступ к БД в коде приложений — **только через Prisma** (схема в репозитории, `prisma/schema.prisma`), без произвольного SQL в прикладном коде, кроме миграций и осознанных исключений с документированием.
 - Не раздувать `process.env` и аргументы процессов при вызове CLI: длинные промпты передавать через **stdin**, а не в argv.
 - **Общий хост (Raspberry Pi, dev-rpa и т.п.) с несколькими Node-проектами**: запрещено останавливать процессы через **`pkill -f 'node dist/server.js'`** и аналоги без привязки к каталогу проекта — это убивает чужие сервисы (например `syslog-srv`). Обязательная норма: скрипт **`scripts/kill-node-in-workdir.sh`** и регламент [raspi-safe-node-process-management-ru.md](raspi-safe-node-process-management-ru.md).
@@ -43,7 +43,7 @@
 
 **Строгая норма для агентов (Cursor, чат портала, раннеры):**
 
-- После **завершения правок по задаче** агент **сам** фиксирует результат в git и **сам** выкладывает: **`git commit`**, **`git push`**, затем с **этой же VDS** (корень клона `CursorRPA`): **`bash scripts/deploy-shectory-portal.sh`** для портала — скрипт собирает `shectory-portal`, перезапускает unit (**systemd** или **systemd --user**) и проверяет CSS через `PUBLIC_URL` (по умолчанию `https://shectory.ru`). Другие сервисы — их `scripts/deploy-*` по регламенту.
+- После **завершения правок по задаче** агент **сам** фиксирует результат в git и **сам** выкладывает: **`git commit`**, **`git push`**, затем на **`shectory-work`** (корень клона `CursorRPA`): **`bash scripts/deploy-shectory-portal.sh`** для портала — скрипт собирает `shectory-portal`, перезапускает unit (**systemd** или **systemd --user**) и проверяет CSS через `PUBLIC_URL` (по умолчанию `https://shectory.ru`). Другие сервисы — их `scripts/deploy-*` по регламенту.
 - Не оставлять «висящие» незакоммиченные правки и не перекладывать на пользователя рутину «закоммить и задеплой» без отдельного запрета в сессии.
 - Сообщения коммитов — **осмысленные**, изменения **атомарные**; **не коммитить** секреты и локальные `.env` с ключами.
 - Если деплой или push **невозможны** в среде (нет сети, нет прав, нет настроенного remote), агент явно фиксирует это в ответе и даёт пользователю точные команды для ручного выполнения.
@@ -51,7 +51,7 @@
 ### Git remote и новый прикладной репозиторий
 
 - **Источник правды по URL и пути клона** — [реестр проектов](shectory-projects-registry.md): колонки `path_shectory` и `git_remote`. Новый продукт **сразу заносится в таблицу** (и при необходимости в блок «Связь с `~/workspaces`»).
-- **Норма URL для push с VDS и для агентов без интерактива** — **SSH**: `git@github.com:Org/repo.git` (**без** токенов и паролей в URL). Настройка ключей для пользователя, от имени которого идёт `git clone` / `git push`: скрипт [scripts/cursorrpa-github-ssh-setup.sh](../scripts/cursorrpa-github-ssh-setup.sh), пошагово также в [telegram-bot-pilot-novice-ru.md](telegram-bot-pilot-novice-ru.md) (раздел про SSH и GitHub).
+- **Норма URL для push с `shectory-work` и для агентов без интерактива** — **SSH**: `git@github.com:Org/repo.git` (**без** токенов и паролей в URL). Настройка ключей для пользователя, от имени которого идёт `git clone` / `git push`: скрипт [scripts/cursorrpa-github-ssh-setup.sh](../scripts/cursorrpa-github-ssh-setup.sh), пошагово также в [telegram-bot-pilot-novice-ru.md](telegram-bot-pilot-novice-ru.md) (раздел про SSH и GitHub).
 - **Первичная привязка** (если в клоне ещё нет `origin`):  
   `git remote add origin <git_remote из реестра>` → `git push -u origin main` (или актуальное имя ветки).
 - **HTTPS** (`https://github.com/...`) в среде агента часто даёт `could not read Username` — там нет интерактивного ввода; для автоматизированного push предпочтителен SSH. Проверка без запроса пароля: `GIT_SSH_COMMAND="ssh -o BatchMode=yes" git ls-remote origin`.
@@ -68,12 +68,12 @@
 - Команды shell в UI выполняются **только после подтверждения** пользователя; выводить блоки `<<<SHELL_COMMAND>>>…<<</SHELL_COMMAND>>>` и маркер ожидания ответа, как описано в системных инструкциях раннера.
 - Любой новый продукт или крупная фича: **сначала** — контекст из этой Wikipedia + карточка проекта + актуальные поля тикета/сессии.
 
-- **Агенты Cursor / CLI на рабочей станции Shectory** (workspace с доступом `ssh shectory-work`, см. ниже **алиас `shevbo-pi`**): любые действия на Raspberry Pi — **выполнять самостоятельно** через `ssh shevbo-pi '…'` или интерактивно, с **`BatchMode=yes`** там, где не нужен TTY. **Не просить пользователя** «зайдите на Pi и выполните …», если агент уже в среде с рабочим SSH. Исключение — объективный блокер (нет сети, нет ключей, запрет политики среды): тогда явно написать причину и что сделать вручную.
+- **Агенты Cursor / CLI на рабочей станции Shectory** (workspace с доступом **`ssh shectory-work`** и **`ssh shevbo-pi`**, см. ниже): операции **на VDS** — через **`ssh shectory-work '…'`**; **на Raspberry Pi** — через **`ssh shevbo-pi '…'`** (или интерактивно), с **`BatchMode=yes`** там, где не нужен TTY. **Не просить пользователя** выполнять эти команды самому, если SSH в среде агента уже настроен. Исключение — объективный блокер (нет сети, нет ключей, запрет политики среды): тогда явно написать причину и что сделать вручную.
 
 ### Настройки портала, роли и внешний Gemini API (апрель 2026)
 
 - **UI**: `/settings` (кнопка с `/projects`) — каталог пользователей с назначением ролей (**только `superadmin`**), редактирование **несекретных** констант из реестра `shectory-portal/src/lib/portal-settings-registry.ts`, загрузка MP3 для колокольчика (тот же маршрут `POST /api/auth/notifications/sound`), сохранение **`GEMINI_API_KEY`** (только superadmin, значение не отдаётся в API).
-- **БД**: модель `PortalSetting` (`portal_settings`), миграция `20260402180000_portal_settings`. **Прод (VDS):** после `git pull` обязательно `cd shectory-portal && npx prisma migrate deploy --schema=../prisma/schema.prisma`. Без таблицы `portal_settings` страница `/settings` и каталог пользователей **падают** (ошибка при сидировании настроек). Если `migrate deploy` даёт **P3009** (failed migration), а изменения из SQL уже в БД (например колонка уже есть) — однократно: `npx prisma migrate resolve --applied <имя_папки_миграции> --schema=../prisma/schema.prisma`, затем снова `migrate deploy`. После правок миграций при необходимости перезапустить **`shectory-portal.service`**. После сохранения настройки дублируются в **`data/portal-runtime-env.json`** (в `.gitignore`) — его читают фоновые Node-скрипты (`scripts/lib/agent-cli.mjs` при каждом вызове) и подмешивают в `process.env` при старте Next (`instrumentation.ts` + `src/lib/portal-runtime-env.ts`).
+- **БД**: модель `PortalSetting` (`portal_settings`), миграция `20260402180000_portal_settings`. **Прод (`shectory-work`):** после `git pull` обязательно `cd shectory-portal && npx prisma migrate deploy --schema=../prisma/schema.prisma`. Без таблицы `portal_settings` страница `/settings` и каталог пользователей **падают** (ошибка при сидировании настроек). Если `migrate deploy` даёт **P3009** (failed migration), а изменения из SQL уже в БД (например колонка уже есть) — однократно: `npx prisma migrate resolve --applied <имя_папки_миграции> --schema=../prisma/schema.prisma`, затем снова `migrate deploy`. После правок миграций при необходимости перезапустить **`shectory-portal.service`**. После сохранения настройки дублируются в **`data/portal-runtime-env.json`** (в `.gitignore`) — его читают фоновые Node-скрипты (`scripts/lib/agent-cli.mjs` при каждом вызове) и подмешивают в `process.env` при старте Next (`instrumentation.ts` + `src/lib/portal-runtime-env.ts`).
 - **ИИ**: `SHECTORY_EXECUTOR_BACKEND` и `SHECTORY_AUDITOR_BACKEND` — `cursor_cli` (Cursor Agent CLI, как раньше) или **`gemini_api`** (прямой вызов Google Generative Language API, модель из `SHECTORY_*_AGENT_MODEL_ID`). Расширение на других провайдеров — добавлять ветку в `agent-cli.mjs` и ключи в реестр.
 - **API**: `GET/PATCH /api/admin/settings`, `POST /api/admin/settings/secrets`, `GET /api/admin/users`, `PATCH /api/admin/users/[id]`, `GET /api/system/limits` (лимиты вложений для клиента чата).
 - **Мост для прикладных приложений** (например **ourdiary**): `POST /api/internal/verify-portal-credentials` с заголовком `Authorization: Bearer ${SHECTORY_AUTH_BRIDGE_SECRET}` — проверка email/пароля против `portal_users` без выдачи cookie портала. Секрет задаётся в `.env` портала и **тем же значением** в приложении-потребителе; см. `ourdiary/RUNBOOK.md` («Единый вход Shectory»).
@@ -119,28 +119,30 @@
     - **Tailscale SSH** (когда `ssh` пишет `tailscale:` и просит открыть ссылку в браузере) для **фонового мониторинга не подходит** — бот не может «пройти» браузерный чек.
     - В регламенте по общему хосту Raspberry Pi в примерах путей используется Linux-пользователь **`shevbo`** (см. [raspi-safe-node-process-management-ru.md](raspi-safe-node-process-management-ru.md)), а не обязательно `pi`. Имя пользователя в `PI_MONITOR_SSH` должно **совпадать с реальной учёткой на Pi**.
 
-### Сетевая инфраструктура Pi ↔ VDS
+### Сетевая инфраструктура Pi ↔ VDS (`shectory-work`)
+
+- **Термины**: **VDS** = сервер **`shectory-work`** (`83.69.248.77`). WireGuard-сервер и nginx для Pi — **на нём**.
 
 - **Собственный VPN (WireGuard + autossh fallback)**:
-  - Основной канал: **WireGuard** UDP `51820` — Pi как клиент (`10.66.0.2`), VDS как сервер (`10.66.0.1`).
-  - Fallback: **autossh reverse tunnel** TCP `2222` — Pi пробрасывает порты `4444`, `4555`, `22` на VDS (`127.0.0.1:24444`, `24555`, `22022`).
+  - Основной канал: **WireGuard** UDP `51820` — Pi как клиент (`10.66.0.2`), сервер на **`shectory-work`** (`10.66.0.1`).
+  - Fallback: **autossh reverse tunnel** — Pi пробрасывает порты `4444`, `4555`, `22` на **`shectory-work`** (`127.0.0.1:24444`, `24555`, `22022`).
   - Подсеть: `10.66.0.0/24`.
-  - SSH к Pi **с VDS**: `ssh shevbo@10.66.0.2` (WireGuard) или `ssh -p 22022 shevbo@127.0.0.1` (fallback).
-  - SSH к Pi **с рабочей станции Shectory** (агенты / разработка): в `~/.ssh/config` задан хост **`shevbo-pi`** — `HostName 10.66.0.2`, `User shevbo`, **`ProxyJump shectory-work`**, ключ деплоя Pi (как у старого алиаса `raspi`). Команда: **`ssh shevbo-pi`** (без ручного указания IP и прыжка). Имя **`shevbo-pi`** — каноническое обозначение узла Pi для инструкций и автоматизации на этой машине.
+  - SSH к Pi **с `shectory-work`**: `ssh shevbo@10.66.0.2` (WireGuard) или `ssh -p 22022 shevbo@127.0.0.1` (fallback).
+  - SSH к Pi **с рабочей станции** (агенты / разработка): в `~/.ssh/config` хост **`shevbo-pi`** — `HostName 10.66.0.2`, `User shevbo`, **`ProxyJump shectory-work`**, ключ деплоя Pi (как у `raspi`). Команда: **`ssh shevbo-pi`**. Имя **`shevbo-pi`** — каноническое обозначение Pi в инструкциях.
 
-- **Nginx на VDS (порты `:4444` и `:4555`)**:
+- **Nginx на `shectory-work` (порты `:4444` и `:4555`)**:
   - Конфиг: `/etc/nginx/conf.d/pi-services.conf`.
   - Upstream приоритет: WireGuard `10.66.0.2` → autossh `127.0.0.1:2xxxx` → Tailscale `100.79.47.61` (last resort).
   - `:4444` — Syslog Pi, `:4555` — PingMaster Pi.
 
 - **Публичный URL PingMaster (`https://pingmaster.shectory.ru`)**:
-  - Отдельный vhost: `/etc/nginx/sites-available/pingmaster.shectory.ru` → тот же `upstream pi_pingmaster` (WG **10.66.0.2:4555** и fallback из `pi-services.conf`).
-  - DNS: **A** `pingmaster.shectory.ru` → публичный IPv4 **этой VDS** (как у `shectory.ru`). Пока у Let's Encrypt **NXDOMAIN**, выпуск сертификата невозможен — дождаться **глобальной** записи (`dig +short pingmaster.shectory.ru @8.8.8.8`), затем на VDS:  
-    `sudo certbot --nginx -d pingmaster.shectory.ru --non-interactive --agree-tos -m bshevelev@mail.ru --redirect`
-  - Пир Pi в `/etc/wireguard/wg0.conf` должен быть в файле (секция `[Peer]`), иначе после `systemctl restart wg-quick@wg0` пир пропадёт.
+  - На **`shectory-work`**: vhost `/etc/nginx/sites-available/pingmaster.shectory.ru` — **443** с отдельным сертификатом Let's Encrypt для имени `pingmaster.shectory.ru`, прокси на тот же `upstream pi_pingmaster` (WG **10.66.0.2:4555** и fallback из `pi-services.conf`). Без блока **443** для этого `server_name` HTTPS уезжал в дефолтный портал `shectory.ru`.
+  - DNS: **A** `pingmaster.shectory.ru` → публичный IPv4 **`shectory-work`** (как у `shectory.ru`). Первичный выпуск: на **`shectory-work`**: `sudo certbot certonly --nginx -d pingmaster.shectory.ru` (при **NXDOMAIN** сначала дождаться записи в публичном DNS: `dig +short pingmaster.shectory.ru @8.8.8.8`).
+  - На Pi **PingMaster** должен слушать **`:4555`** (например `pm2 start npm --name pingmaster -- start -- -p 4555`), иначе upstream даёт **502/504**.
+  - Пир Pi в `/etc/wireguard/wg0.conf` на **`shectory-work`** должен быть в файле (секция `[Peer]`), иначе после `systemctl restart wg-quick@wg0` пир пропадёт.
 
 - **Мониторинг VPN**:
-  - `wg-monitor.timer` на VDS — каждую минуту проверяет handshake WireGuard и доступность портов.
+  - `wg-monitor.timer` на **`shectory-work`** — каждую минуту проверяет handshake WireGuard и доступность портов.
   - При смене статуса (`ok`/`fallback`/`down`) отправляет Telegram-алерт.
   - Логи: `journalctl -u wg-monitor.service`.
 
@@ -151,7 +153,7 @@
 - **Агент-исполнитель (R) Shectory**: выполняет шаги по тикету, формирует команды в формате `<<<SHELL_COMMAND>>>…<<</SHELL_COMMAND>>>` для подтверждения.
 - **Агент-аудитор (R) Shectory**: независимая проверка успешности шага по полному выводу (команда + stdout/stderr), выдаёт вердикт `success|rework` и следующий контекст.
 - **Стоп автопроцессов**: кнопка “Остановить” выставляет стоп-флаг сессии; после этого автозапуски исполнителя/аудитора/команд блокируются до ручного возобновления.
-- **Модели по умолчанию**: исполнитель — `gemini-3-flash` (линейка Flash в headless `agent` на VDS). В **десктопном Cursor** в настройках может отображаться «Gemini 2.5 Flash», но у того же аккаунта команда `agent --list-models` на сервере часто отдаёт только `gemini-3-flash` и `gemini-3.1-pro`; идентификатор `gemini-2.5-flash` там не принимается — это расхождение IDE и headless CLI, не ошибка конфигурации портала. Аудитор — `gemini-3.1-pro`. Env: `SHECTORY_EXECUTOR_AGENT_MODEL_ID`, `SHECTORY_AUDITOR_AGENT_MODEL_ID`; подписи в UI: `SHECTORY_EXECUTOR_MODEL_SPEC`, `SHECTORY_AUDITOR_MODEL_SPEC`.
+- **Модели по умолчанию**: исполнитель — `gemini-3-flash` (линейка Flash в headless `agent` на **`shectory-work`**). В **десктопном Cursor** в настройках может отображаться «Gemini 2.5 Flash», но у того же аккаунта команда `agent --list-models` на сервере часто отдаёт только `gemini-3-flash` и `gemini-3.1-pro`; идентификатор `gemini-2.5-flash` там не принимается — это расхождение IDE и headless CLI, не ошибка конфигурации портала. Аудитор — `gemini-3.1-pro`. Env: `SHECTORY_EXECUTOR_AGENT_MODEL_ID`, `SHECTORY_AUDITOR_AGENT_MODEL_ID`; подписи в UI: `SHECTORY_EXECUTOR_MODEL_SPEC`, `SHECTORY_AUDITOR_MODEL_SPEC`.
 - **Shell-политика**: успех = только `exit_code: 0`; любой `exit_code != 0` — ошибка и требует исправления.
 - **Вложения в чате бэклога**: пользователь может прикрепить файлы (ограничения по размеру, числу и расширениям — см. портал). Копии сохраняются в workspace проекта под `.shectory-chat-attachments/<sessionId>/<messageId>/`; в промпт исполнителю добавляются относительные пути — агент обязан прочитать эти файлы в рабочей копии.
 
