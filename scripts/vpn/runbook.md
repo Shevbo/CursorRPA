@@ -162,6 +162,13 @@ sudo systemctl stop wg-quick@wg0
 sudo systemctl disable wg-quick@wg0
 ```
 
+## apt update: ошибка Tailscale / trixie (403, «no longer signed»)
+
+На Debian **trixie** (testing) или если в `/etc/apt/sources.list.d/` висит **pkgs.tailscale.com** для кодового имени, которого ещё нет в репозитории Tailscale, `apt-get update` падает. Для WireGuard Tailscale **не нужен**.
+
+- Скрипты **`pi-setup-all.sh`** и **`wg-pi-client-setup.sh`** сами переименовывают `tailscale*.list` в `*.disabled` перед `apt update`.
+- Вручную: `sudo mv /etc/apt/sources.list.d/tailscale*.list /tmp/` (или `.disabled`), затем `sudo apt-get update`.
+
 ## Полезные команды
 
 ```bash

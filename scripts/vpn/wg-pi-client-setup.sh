@@ -30,6 +30,16 @@ if [[ -z "$VDS_PUBKEY" || -z "$VDS_ENDPOINT" ]]; then
   exit 1
 fi
 
+# Tailscale apt на trixie/sid часто ломает apt update; для WireGuard не нужен.
+if [[ -d /etc/apt/sources.list.d ]]; then
+  shopt -s nullglob
+  for f in /etc/apt/sources.list.d/tailscale*.list; do
+    [[ -f "$f" ]] || continue
+    mv "$f" "${f}.disabled" && echo "Note: отключён Tailscale apt: ${f}.disabled"
+  done
+  shopt -u nullglob
+fi
+
 echo "=== Installing wireguard-tools ==="
 apt-get update -qq
 apt-get install -y wireguard-tools

@@ -38,6 +38,17 @@ echo " Shectory Pi Setup: WireGuard + autossh + pi-pulse"
 echo "================================================================"
 echo ""
 
+# Репозиторий pkgs.tailscale.com для Debian testing/sid (trixie и т.п.) часто даёт 403 / «no longer signed».
+# Для этого скрипта Tailscale не нужен — временно отключаем .list, чтобы прошёл apt-get update.
+if [[ -d /etc/apt/sources.list.d ]]; then
+  shopt -s nullglob
+  for f in /etc/apt/sources.list.d/tailscale*.list; do
+    [[ -f "$f" ]] || continue
+    mv "$f" "${f}.disabled" && echo "Note: отключён репозиторий Tailscale (мешал apt update): ${f}.disabled"
+  done
+  shopt -u nullglob
+fi
+
 # ── 1. WireGuard ──────────────────────────────────────────────────
 echo "=== [1/3] WireGuard client ==="
 
