@@ -58,7 +58,16 @@ apt-get install -y wireguard-tools
 WG_CONF="/etc/wireguard/wg0.conf"
 if [[ -f "$WG_CONF" ]]; then
   echo "WireGuard config already exists, skipping key generation."
-  PI_PUBKEY=$(cat "$WG_CONF" | grep -A1 '\[Interface\]' | grep PrivateKey | awk '{print $3}' | wg pubkey)
+  # Нельзя брать «строку после [Interface]» — там часто Address; читаем именно PrivateKey.
+  PI_PRIVKEY=$(grep -E '^[[:space:]]*PrivateKey[[:space:]]*=' "$WG_CONF" | head -1 | sed -E 's/^[[:space:]]*PrivateKey[[:space:]]*=[[:space:]]*//;s/[[:space:]]+$//')
+  if [[ -n "$PI_PRIVKEY" ]]; then
+    PI_PUBKEY=$(printf '%s\n' "$PI_PRIVKEY" | wg pubkey) || { echo "ERROR: PrivateKey в $WG_CONF некорректен для wg pubkey" >&2; exit 1; }
+  elif wg show wg0 public-key &>/dev/null; then
+    PI_PUBKEY=$(wg show wg0 public-key)
+  else
+    echo "ERROR: в $WG_CONF нет строки PrivateKey и интерфейс wg0 не поднят." >&2
+    exit 1
+  fi
 else
   PI_PRIVKEY=$(wg genkey)
   PI_PUBKEY=$(echo "$PI_PRIVKEY" | wg pubkey)
