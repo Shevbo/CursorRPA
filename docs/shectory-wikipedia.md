@@ -141,6 +141,11 @@
   - На Pi **PingMaster** должен слушать **`:4555`** (например `pm2 start npm --name pingmaster -- start -- -p 4555`), иначе upstream даёт **502/504**.
   - Пир Pi в `/etc/wireguard/wg0.conf` на **`shectory-work`** должен быть в файле (секция `[Peer]`), иначе после `systemctl restart wg-quick@wg0` пир пропадёт.
 
+- **Публичный URL Syslog UI (`https://syslog.shectory.ru`)**:
+  - На **`shectory-work`**: vhost `/etc/nginx/sites-available/syslog.shectory.ru` (включён в `sites-enabled`) — **`proxy_pass http://pi_syslog`** (WG **10.66.0.2:4444** и fallback из `pi-services.conf`). На Pi **syslog-srv** слушает **`WEB_PORT=4444`**, **`WEB_BIND_ADDRESS=0.0.0.0`**, для работы за HTTPS-прокси: **`NEXTAUTH_URL=https://syslog.shectory.ru`**. Нужен **отдельный** сертификат Let's Encrypt для **`syslog.shectory.ru`**, иначе HTTPS с этим именем уезжает в дефолтный vhost портала **`shectory.ru`**.
+  - DNS: **A** `syslog.shectory.ru` → **`83.69.248.77`**. Проверка: `dig +short syslog.shectory.ru @8.8.8.8`. После появления записи на **`shectory-work`**: `sudo certbot certonly --nginx -d syslog.shectory.ru --non-interactive --agree-tos -m bshevelev@mail.ru`, затем полный vhost с редиректом **80→443**: шаблон **`/etc/nginx/sites-available/syslog.shectory.ru.https-after-certbot`** скопировать в **`/etc/nginx/sites-available/syslog.shectory.ru`**, `sudo nginx -t && sudo systemctl reload nginx`. До успешного **certbot** на этом `server_name` остаётся только **HTTP (80)** (прокси на Pi).
+  - Чеклист агента: **`syslog-srv/docs/agent-handoff-syslog.shectory.ru.md`**.
+
 - **Мониторинг VPN**:
   - `wg-monitor.timer` на **`shectory-work`** — каждую минуту проверяет handshake WireGuard и доступность портов.
   - При смене статуса (`ok`/`fallback`/`down`) отправляет Telegram-алерт.
