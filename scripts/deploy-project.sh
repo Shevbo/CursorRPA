@@ -122,8 +122,15 @@ if [[ -f \"${PROXY_ENV_PATH}\" ]]; then
   export HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy PIP_INDEX_URL PIP_EXTRA_INDEX_URL PIP_TRUSTED_HOST || true
 fi
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo \"hoster: git pull…\"
-  git pull --ff-only || git pull
+  echo \"hoster: git sync…\"
+  git fetch origin --prune || exit 4
+  if git show-ref -q refs/remotes/origin/main; then
+    git checkout main 2>/dev/null || true
+    git merge --ff-only origin/main || { echo \"hoster: ERROR not ff to origin/main\"; exit 4; }
+  else
+    git pull --ff-only || exit 4
+  fi
+  echo \"hoster: tree $(git rev-parse --short HEAD) $(git log -1 --oneline)\"
 fi
 ./scripts/deploy.sh
 '"
