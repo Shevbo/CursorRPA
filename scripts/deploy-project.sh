@@ -121,6 +121,10 @@ if [[ -f \"${PROXY_ENV_PATH}\" ]]; then
   source \"${PROXY_ENV_PATH}\"
   export HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy PIP_INDEX_URL PIP_EXTRA_INDEX_URL PIP_TRUSTED_HOST || true
 fi
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo \"hoster: git pull…\"
+  git pull --ff-only || git pull
+fi
 ./scripts/deploy.sh
 '"
 }
