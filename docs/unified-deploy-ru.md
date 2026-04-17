@@ -16,6 +16,7 @@
 - `./scripts/deploy-project.sh komissionka hoster`
 - `./scripts/deploy-project.sh ourdiary hoster`
 - `./scripts/deploy-project.sh piranha-ai hoster`
+- `./scripts/deploy-project.sh shectory-assist hoster` (Telegram-бот на **shectory-work**, см. `Shectory Assist/scripts/deploy.sh`)
 
 Публичные UI прикладных продуктов на поддоменах `*.shectory.ru` перечислены в [shectory-wikipedia.md](shectory-wikipedia.md) (таблица «Публичные URL прикладных приложений Shectory»).
 

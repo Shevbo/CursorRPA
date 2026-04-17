@@ -38,6 +38,7 @@ ws_path_for() {
     ourdiary) echo "/home/shectory/workspaces/ourdiary" ;;
     piranha-ai) echo "/home/shectory/workspaces/PiranhaAI" ;;
     pingmaster) echo "/home/shectory/workspaces/PingMaster" ;;
+    shectory-assist) echo "/home/shectory/workspaces/Shectory Assist" ;;
     *) echo "/home/shectory/workspaces/$1" ;;
   esac
 }
@@ -112,6 +113,16 @@ exit 5
 '"
 }
 
+deploy_shectory_assist_work() {
+  # Telegram-бот Assist: каталог на VDS, PM2 (см. Shectory Assist/scripts/deploy.sh).
+  ssh -o BatchMode=yes "${SSH_WORK}" "bash --noprofile --norc -lc '
+set -euo pipefail
+cd \"/home/shectory/workspaces/Shectory Assist\"
+chmod +x ./scripts/deploy.sh 2>/dev/null || true
+./scripts/deploy.sh
+'"
+}
+
 deploy_piranha_ai_hoster() {
   ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc '
 set -euo pipefail
@@ -178,6 +189,10 @@ case "${PROJECT_SLUG}:${ENV_NAME}" in
   pingmaster:hoster)
     commit_push_on_work "pingmaster"
     ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc 'set -euo pipefail; cd \"\$HOME/pingmaster\"; ./scripts/deploy.sh'"
+    ;;
+  shectory-assist:hoster)
+    commit_push_on_work "shectory-assist"
+    deploy_shectory_assist_work
     ;;
   *:hoster)
     commit_push_on_work "${PROJECT_SLUG}"
