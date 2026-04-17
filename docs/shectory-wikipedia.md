@@ -78,6 +78,7 @@
 - **ИИ**: `SHECTORY_EXECUTOR_BACKEND` и `SHECTORY_AUDITOR_BACKEND` — `cursor_cli` (Cursor Agent CLI, как раньше) или **`gemini_api`** (прямой вызов Google Generative Language API, модель из `SHECTORY_*_AGENT_MODEL_ID`). Расширение на других провайдеров — добавлять ветку в `agent-cli.mjs` и ключи в реестр.
 - **API**: `GET/PATCH /api/admin/settings`, `POST /api/admin/settings/secrets`, `GET /api/admin/users`, `PATCH /api/admin/users/[id]`, `GET /api/system/limits` (лимиты вложений для клиента чата).
 - **Мост для прикладных приложений** (например **ourdiary**): `POST /api/internal/verify-portal-credentials` с заголовком `Authorization: Bearer ${SHECTORY_AUTH_BRIDGE_SECRET}` — проверка email/пароля против `portal_users` без выдачи cookie портала. Секрет задаётся в `.env` портала и **тем же значением** в приложении-потребителе; см. `ourdiary/RUNBOOK.md` («Единый вход Shectory»).
+- **Shectory Assist (allowlist Telegram user id)**: `GET /api/internal/assist-bot-allowlist?slug=shectory-assist` с тем же `Authorization: Bearer ${SHECTORY_AUTH_BRIDGE_SECRET}` — JSON `{ restricted, allowedTelegramUserIds }` для бота на hoster. Управление списком: **`/projects/shectory-assist/control`** (админ-сессия портала).
 
 ### Адаптивный UI портала (CURSO-4, апрель 2026)
 

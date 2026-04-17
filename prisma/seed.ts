@@ -112,6 +112,20 @@ const ARCH_MERMAID_BY_SLUG: Record<string, string> = {
     U -->|HTTPS| Edge
     Edge -->|proxy_pass| Web
     Web -->|Prisma| DB`,
+  "shectory-assist": `flowchart LR
+    U[Telegram]
+    subgraph Hoster["Hoster"]
+      Bot[Assist PM2 Node]
+      G[Gemini]
+    end
+    subgraph VDS["VDS"]
+      Portal[Shectory Portal]
+      Pgdb[(Postgres портала)]
+    end
+    U -->|Bot API| Bot
+    Bot --> G
+    Bot -->|allowlist| Portal
+    Portal --> Pgdb`,
 };
 
 async function main() {
@@ -258,6 +272,18 @@ async function main() {
         "Семейный дневник. Публичный URL https://ourdiary.shectory.ru/ (nginx на VDS → приложение на Hoster). RUNBOOK: ourdiary/RUNBOOK.md.",
       hosterRole: "приложение на Hoster; TLS на VDS",
     },
+    {
+      slug: "shectory-assist",
+      name: "Shectory Assist",
+      stage: "mvp",
+      uiUrl: "https://shectory.ru/projects/shectory-assist",
+      workspacePath: "/home/shectory/workspaces/Shectory Assist",
+      repoUrl: "git@github.com:Shevbo/ShectoryAssist.git",
+      stack: ["TypeScript", "Node.js", "grammy", "Gemini", "PM2 (hoster)"],
+      notes:
+        "Голосовой Telegram-бот (ASR/NLU/TTS Gemini, навык Gazeta). Рантайм: PM2 на Hoster ~/shectory-assist; код на VDS. Деплой: deploy-project.sh shectory-assist hoster. Allowlist Telegram user id: /projects/shectory-assist/control.",
+      hosterRole: "PM2 Node на Hoster; allowlist в БД портала",
+    },
   ] as const;
 
   for (const p of registry) {
@@ -289,7 +315,8 @@ async function main() {
       create: {
         slug: p.slug,
         name: p.name,
-        ticketPrefix: p.slug === "piranha-ai" ? "PH" : ticketPrefixFromSlug(p.slug),
+        ticketPrefix:
+          p.slug === "piranha-ai" ? "PH" : p.slug === "shectory-assist" ? "ASIST" : ticketPrefixFromSlug(p.slug),
         workspacePath: p.workspacePath,
         uiUrl: p.uiUrl,
         stage: p.stage,
@@ -426,7 +453,31 @@ async function main() {
                             links: [],
                           },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            {
+                              id: "vds",
+                              name: "VDS shectory",
+                              group: "VDS",
+                              role: "git + Shectory Portal",
+                              host: "shectory-work",
+                              links: [
+                                {
+                                  label: "Карточка проекта",
+                                  url: "https://shectory.ru/projects/shectory-assist",
+                                },
+                              ],
+                            },
+                            {
+                              id: "hoster",
+                              name: "Hoster",
+                              group: "Hoster",
+                              role: "PM2 shectory-assist-bot",
+                              host: "83.69.248.175",
+                              links: [],
+                            },
+                          ]
+                        : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -483,7 +534,20 @@ async function main() {
                           { id: "ui", name: "ourdiary Next.js", kind: "ui", serverId: "hoster" },
                           { id: "db", name: "Postgres", kind: "db", serverId: "hoster" },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            { id: "telegram", name: "Telegram", kind: "external" },
+                            {
+                              id: "assist",
+                              name: "Shectory Assist (grammy)",
+                              kind: "worker",
+                              serverId: "hoster",
+                            },
+                            { id: "gemini", name: "Google Gemini", kind: "external" },
+                            { id: "portal-api", name: "Shectory Portal API", kind: "api", serverId: "vds" },
+                            { id: "db", name: "Postgres (портал)", kind: "db", serverId: "hoster" },
+                          ]
+                        : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -515,7 +579,21 @@ async function main() {
                           { from: "browser", to: "ui", label: "HTTPS" },
                           { from: "ui", to: "db", label: "SQL" },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            { from: "telegram", to: "assist", label: "Bot API" },
+                            { from: "assist", to: "gemini", label: "REST" },
+                            { from: "assist", to: "portal-api", label: "allowlist GET" },
+                            { from: "portal-api", to: "db", label: "SQL" },
+                          ]
+                        : [],
+          ...(p.slug === "komissionka"
+            ? {
+                devtools: {
+                  prismaStudioUrl: `${String(p.uiUrl).replace(/\/$/, "")}/admin/prisma-studio`,
+                },
+              }
+            : {}),
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",
@@ -524,7 +602,8 @@ async function main() {
       },
       update: {
         name: p.name,
-        ticketPrefix: p.slug === "piranha-ai" ? "PH" : ticketPrefixFromSlug(p.slug),
+        ticketPrefix:
+          p.slug === "piranha-ai" ? "PH" : p.slug === "shectory-assist" ? "ASIST" : ticketPrefixFromSlug(p.slug),
         workspacePath: p.workspacePath,
         uiUrl: p.uiUrl,
         stage: p.stage,
@@ -655,7 +734,31 @@ async function main() {
                             links: [],
                           },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            {
+                              id: "vds",
+                              name: "VDS shectory",
+                              group: "VDS",
+                              role: "git + Shectory Portal",
+                              host: "shectory-work",
+                              links: [
+                                {
+                                  label: "Карточка проекта",
+                                  url: "https://shectory.ru/projects/shectory-assist",
+                                },
+                              ],
+                            },
+                            {
+                              id: "hoster",
+                              name: "Hoster",
+                              group: "Hoster",
+                              role: "PM2 shectory-assist-bot",
+                              host: "83.69.248.175",
+                              links: [],
+                            },
+                          ]
+                        : [],
           modules:
             p.slug === "cursorrpa"
               ? [
@@ -712,7 +815,20 @@ async function main() {
                           { id: "ui", name: "ourdiary Next.js", kind: "ui", serverId: "hoster" },
                           { id: "db", name: "Postgres", kind: "db", serverId: "hoster" },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            { id: "telegram", name: "Telegram", kind: "external" },
+                            {
+                              id: "assist",
+                              name: "Shectory Assist (grammy)",
+                              kind: "worker",
+                              serverId: "hoster",
+                            },
+                            { id: "gemini", name: "Google Gemini", kind: "external" },
+                            { id: "portal-api", name: "Shectory Portal API", kind: "api", serverId: "vds" },
+                            { id: "db", name: "Postgres (портал)", kind: "db", serverId: "hoster" },
+                          ]
+                        : [],
           flows:
             p.slug === "cursorrpa"
               ? [
@@ -744,7 +860,21 @@ async function main() {
                           { from: "browser", to: "ui", label: "HTTPS" },
                           { from: "ui", to: "db", label: "SQL" },
                         ]
-                      : [],
+                      : p.slug === "shectory-assist"
+                        ? [
+                            { from: "telegram", to: "assist", label: "Bot API" },
+                            { from: "assist", to: "gemini", label: "REST" },
+                            { from: "assist", to: "portal-api", label: "allowlist GET" },
+                            { from: "portal-api", to: "db", label: "SQL" },
+                          ]
+                        : [],
+          ...(p.slug === "komissionka"
+            ? {
+                devtools: {
+                  prismaStudioUrl: `${String(p.uiUrl).replace(/\/$/, "")}/admin/prisma-studio`,
+                },
+              }
+            : {}),
           secrets: {
             hint:
               "Секреты не хранятся в БД. Смотрите docs/ и серверные файлы env/secret-stores (Hoster: /home/shectory/.db-projects, komissionka: /home/ubuntu/komissionka/.env).",

@@ -48,6 +48,7 @@ flowchart TB
 | pingmaster  | PingMaster       | requirements     | `https://pingmaster.shectory.ru` | `/home/shectory/workspaces/PingMaster`  | локальный git инициализирован (remote не настроен)                                      | partial                    | веб-UI на Pi, снаружи — VDS nginx | Android + Next.js web | Публичный вход — **`https://pingmaster.shectory.ru`**. Процесс на Pi (порт **4555**), прокси с **`shectory-work`**. См. **`docs/shectory-wikipedia.md`** (Pi ↔ VDS). |
 | syslog-srv  | Syslog Server    | prod (UI)        | `https://syslog.shectory.ru` | `/home/shectory/workspaces/syslog-srv`  | по факту клона на Pi/VDS                                                                | partial                    | UI на Pi, HTTPS на VDS            | Next.js, UDP syslog      | Публичный вход — **`https://syslog.shectory.ru`**. Чеклист: **`syslog-srv/docs/agent-handoff-syslog.shectory.ru.md`**. |
 | ourdiary    | Наш дневник (ourdiary) | dev         | `https://ourdiary.shectory.ru/` (nginx на VDS → `127.0.0.1:3002`, PM2 на Hoster) | `/home/shectory/workspaces/ourdiary`    | `git@github.com:Shevbo/ourdiary.git`                                                    | ok                         | prod на Hoster (Postgres локально) | Next.js 16, Prisma, NextAuth | Публичный URL только поддомен; внутренний порт и PM2 — **`ourdiary/RUNBOOK.md`** («Внешний URL»). Деплой: **`deploy-project.sh ourdiary hoster`**. |
+| shectory-assist | Shectory Assist | mvp | карточка: `https://shectory.ru/projects/shectory-assist` (бот без отдельного публичного UI) | `/home/shectory/workspaces/Shectory Assist` | `git@github.com:Shevbo/ShectoryAssist.git` | ok | PM2 на Hoster `~/shectory-assist` | TypeScript, grammy, Gemini | Деплой: **`deploy-project.sh shectory-assist hoster`**. Allowlist Telegram user id: **`/projects/shectory-assist/control`** (портал). |
 
 
 ---
@@ -63,6 +64,7 @@ flowchart TB
 | `/home/shectory/workspaces/PingMaster`   | базовый bootstrap по стандарту Shectory          | рабочая копия проекта PingMaster                 |
 | `/home/shectory/workspaces/syslog-srv`   | syslog UI + приём UDP (часто деплой на Pi)        | репозиторий **syslog-srv**                       |
 | `/home/shectory/workspaces/ourdiary`     | семейный дневник: лента, календарь, расходы, TV  | репозиторий **ourdiary**                         |
+| `/home/shectory/workspaces/Shectory Assist` | голосовой Telegram-бот Assist (Gemini, навык Gazeta) | репозиторий **ShectoryAssist**; рантайм на Hoster |
 
 
 ---
