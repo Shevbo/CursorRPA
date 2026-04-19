@@ -1,0 +1,19 @@
+Записи DNS для доставляемости почты @shectory.ru (добавить у регистратора / Hoster DNS).
+TTL можно 1800 как у остальных записей.
+
+--- SPF (тип TXT, имя @ или shectory.ru — как в вашей панели) ---
+v=spf1 ip4:83.69.248.77 mx a ~all
+
+При необходимости позже ужесточить до -all после проверки всей цепочки отправки.
+
+--- DKIM (тип TXT). Имя узла в панели часто задают как постфикс к домену: ---
+poste._domainkey
+
+Значение одной строкой (без переносов):
+v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsu2gd/obw5LAqD/JzAz1HNVd89CDw5/hzGfjWCfj50pOPhVARqudasZh6Yww00r1daLnImbNQv/laOzX2ljK0p70/jWwGj7j8TYB4dpPxOe/WxMHYRKl77py9IphliydFiT13dntNDe7SgQNB1f7sQFWtLhcv2jiSAmqv0debdsxGfI8RqFN9nCIxpKXLXkA1e3+Ee3rWPyUcqIA9XQBzCLuQL7VtPNSY6tU6Z6wvv0PgIdCNNK15xk5508hmbjZyJjQ0nYsvUpU6f5g1m1ovz/k9+iLiTfIhUl981iwWWl476QYoWaxtQ/5MxVfip9q2dFIveph41ZwD/uHYsA/0QIDAQAB
+
+Селектор poste совпадает с файлом selector на сервере (/data/haraka-dkim/shectory.ru/selector).
+
+--- DMARC (опционально, после SPF+DKIM) ---
+Имя: _dmarc
+Значение (пример мягкой политики): v=DMARC1; p=none; rua=mailto:admin@shectory.ru
