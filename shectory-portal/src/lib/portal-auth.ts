@@ -221,7 +221,10 @@ async function deliverAuthCode(email: string, code: string, purpose: string): Pr
         auth: user ? { user, pass } : undefined,
         ...(relaxTls ? { tls: { rejectUnauthorized: false } } : {}),
       });
-      await transporter.sendMail({ from, to: email, subject, text: body });
+      const info = await transporter.sendMail({ from, to: email, subject, text: body });
+      console.log(
+        `[AUTH_EMAIL] SMTP sent to=${email} msgId=${info.messageId ?? "?"} response=${String(info.response ?? "").slice(0, 120)}`
+      );
       return { delivery: "smtp" };
     } catch (err) {
       console.error("[AUTH_EMAIL] SMTP send failed:", err);
