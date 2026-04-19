@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 type Mode = "login" | "set-initial" | "register" | "forgot";
+type ForgotPhase = "email" | "confirm";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [mode, setMode] = useState<Mode>("login");
+  const [forgotPhase, setForgotPhase] = useState<ForgotPhase>("email");
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [debugCode, setDebugCode] = useState("");
@@ -55,6 +57,16 @@ export default function LoginPage() {
     setPassword("");
   }
 
+  function hintAfterCodeSent(delivery: string | undefined) {
+    if (delivery === "smtp") {
+      return "Письмо с кодом отправлено. Проверьте почту (включая спам).";
+    }
+    if (delivery === "log") {
+      return "SMTP не задан: код записан в журнал процесса портала (строки [AUTH_EMAIL LOG]). На сервере: journalctl --user -u shectory-portal.service -g AUTH_EMAIL";
+    }
+    return "Код создан. Если письма нет, проверьте журнал сервера или настройте SMTP.";
+  }
+
   async function requestCode(kind: "register" | "forgot") {
     const url = kind === "register" ? "/api/auth/register/request-code" : "/api/auth/forgot/request-code";
     const r = await fetch(url, {
@@ -63,9 +75,11 @@ export default function LoginPage() {
       credentials: "include",
       body: JSON.stringify({ email: email.trim() }),
     });
-    const j = await r.json().catch(() => ({} as { error?: string; debugCode?: string }));
+    const j = await r.json().catch(() => ({} as { error?: string; debugCode?: string; delivery?: string }));
     if (!r.ok) throw new Error((j as { error?: string }).error ?? "Не удалось отправить код");
-    setInfo("Код отправлен на e-mail.");
+    const delivery = (j as { delivery?: string }).delivery;
+    setInfo(hintAfterCodeSent(delivery));
+    if (kind === "forgot") setForgotPhase("confirm");
     if (typeof (j as { debugCode?: string }).debugCode === "string") {
       setDebugCode((j as { debugCode?: string }).debugCode || "");
     } else {
@@ -96,7 +110,10 @@ export default function LoginPage() {
       if (mode === "login") await submitLogin();
       else if (mode === "set-initial") await submitSetInitial();
       else if (mode === "register") await submitWithCode("register");
-      else await submitWithCode("forgot");
+      else if (mode === "forgot") {
+        if (forgotPhase === "email") await requestCode("forgot");
+        else await submitWithCode("forgot");
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -139,17 +156,21 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
             />
-            <input
-              type="password"
-              className="min-h-[44px] w-full rounded border border-slate-700 bg-slate-900 px-3 py-2.5 text-base text-white"
-              placeholder="Пароль"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-            />
-            {(mode === "register" || mode === "forgot") && (
+            {!(mode === "forgot" && forgotPhase === "email") && (
+              <input
+                type="password"
+                className="min-h-[44px] w-full rounded border border-slate-700 bg-slate-900 px-3 py-2.5 text-base text-white"
+                placeholder={mode === "forgot" ? "Новый пароль" : "Пароль"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+              />
+            )}
+            {(mode === "register" || (mode === "forgot" && forgotPhase === "confirm")) && (
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 className="min-h-[44px] w-full rounded border border-slate-700 bg-slate-900 px-3 py-2.5 text-base text-white"
                 placeholder="Код из письма"
                 value={code}
@@ -160,7 +181,7 @@ export default function LoginPage() {
             {info && <p className="text-sm text-emerald-300">{info}</p>}
             {debugCode && (
               <p className="text-xs text-amber-300">
-                DEV код: <span className="font-mono">{debugCode}</span>
+                Код для разработки (не prod): <span className="font-mono">{debugCode}</span>
               </p>
             )}
             <button
@@ -168,7 +189,17 @@ export default function LoginPage() {
               disabled={loading}
               className="min-h-[44px] w-full rounded bg-blue-600 py-3 text-base font-medium text-white disabled:opacity-50 sm:text-sm"
             >
-              {loading ? "…" : mode === "login" ? "Войти" : mode === "set-initial" ? "Задать пароль" : "Подтвердить"}
+              {loading
+                ? "…"
+                : mode === "login"
+                  ? "Войти"
+                  : mode === "set-initial"
+                    ? "Задать пароль"
+                    : mode === "forgot" && forgotPhase === "email"
+                      ? "Отправить код на e-mail"
+                      : mode === "forgot"
+                        ? "Установить новый пароль"
+                        : "Подтвердить"}
             </button>
           </form>
 
@@ -195,22 +226,36 @@ export default function LoginPage() {
               type="button"
               onClick={() => {
                 setMode("forgot");
+                setForgotPhase("email");
                 setCode("");
+                setPassword("");
                 setErr("");
+                setInfo("");
+                setDebugCode("");
               }}
               className="inline-flex min-h-[44px] items-center rounded px-3 text-blue-400 hover:bg-slate-800/50 hover:underline touch-manipulation"
             >
               Забыли пароль
             </button>
           </div>
-          {(mode === "register" || mode === "forgot") && (
+          {mode === "register" && (
             <button
               type="button"
               disabled={loading}
-              onClick={() => void requestCode(mode === "register" ? "register" : "forgot")}
+              onClick={() => void requestCode("register")}
               className="mt-3 inline-flex min-h-[44px] items-center rounded px-3 text-sm text-amber-300 hover:bg-slate-800/50 hover:underline disabled:opacity-50 touch-manipulation sm:text-xs"
             >
               Отправить код на e-mail
+            </button>
+          )}
+          {mode === "forgot" && forgotPhase === "confirm" && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void requestCode("forgot")}
+              className="mt-3 inline-flex min-h-[44px] items-center rounded px-3 text-sm text-amber-300 hover:bg-slate-800/50 hover:underline disabled:opacity-50 touch-manipulation sm:text-xs"
+            >
+              Отправить код ещё раз
             </button>
           )}
         </aside>

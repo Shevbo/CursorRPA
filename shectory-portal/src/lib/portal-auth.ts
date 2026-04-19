@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 
 const COOKIE_NAME = "shectory_admin_session";
@@ -196,15 +197,33 @@ export async function createEmailCode(emailRaw: string, purpose: "register" | "r
 
 async function deliverAuthCode(email: string, code: string, purpose: string): Promise<{ delivery: string; debugCode?: string }> {
   const from = process.env.AUTH_EMAIL_FROM?.trim();
-  const mode = process.env.AUTH_CODE_DELIVERY_MODE?.trim() || "log";
+  const forceLog = process.env.AUTH_CODE_DELIVERY_MODE?.trim() === "log";
   const subject = purpose === "reset" ? "Shectory: код сброса пароля" : "Shectory: код подтверждения e-mail";
   const body = `Код: ${code}\nДействителен ${CODE_TTL_MINUTES} минут.`;
 
-  if (mode === "smtp" && from && process.env.SMTP_HOST) {
-    // SMTP-интеграция включается отдельно; пока безопасный fallback в log/debug.
-    console.log(`[AUTH_EMAIL SMTP PLACEHOLDER] to=${email} subject=${subject} body=${body}`);
-    return { delivery: "smtp-placeholder" };
+  const smtpHost = process.env.SMTP_HOST?.trim();
+  if (!forceLog && smtpHost && from) {
+    try {
+      const port = Number(process.env.SMTP_PORT || 587);
+      const secure =
+        process.env.SMTP_SECURE === "1" ||
+        process.env.SMTP_SECURE === "true" ||
+        port === 465;
+      const user = process.env.SMTP_USER?.trim();
+      const pass = process.env.SMTP_PASSWORD ?? "";
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port,
+        secure,
+        auth: user ? { user, pass } : undefined,
+      });
+      await transporter.sendMail({ from, to: email, subject, text: body });
+      return { delivery: "smtp" };
+    } catch (err) {
+      console.error("[AUTH_EMAIL] SMTP send failed:", err);
+    }
   }
+
   console.log(`[AUTH_EMAIL LOG] to=${email} subject=${subject} body=${body}`);
   if (process.env.NODE_ENV !== "production") return { delivery: "log", debugCode: code };
   return { delivery: "log" };
