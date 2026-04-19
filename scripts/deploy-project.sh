@@ -113,12 +113,28 @@ exit 5
 '"
 }
 
-deploy_shectory_assist_work() {
-  # Telegram-бот Assist: каталог на VDS, PM2 (см. Shectory Assist/scripts/deploy.sh).
-  ssh -o BatchMode=yes "${SSH_WORK}" "bash --noprofile --norc -lc '
+deploy_shectory_assist_hoster() {
+  # Telegram-бот Assist: рантайм на hoster (Node/PM2), код на shectory-work только для git.
+  ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc '
 set -euo pipefail
-cd \"/home/shectory/workspaces/Shectory Assist\"
+cd \"\$HOME/shectory-assist\"
 chmod +x ./scripts/deploy.sh 2>/dev/null || true
+if [[ -f \"${PROXY_ENV_PATH}\" ]]; then
+  # shellcheck disable=SC1090
+  source \"${PROXY_ENV_PATH}\"
+  export HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy || true
+fi
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo \"hoster: shectory-assist git sync…\"
+  git fetch origin --prune || exit 4
+  if git show-ref -q refs/remotes/origin/main; then
+    git checkout main 2>/dev/null || true
+    git merge --ff-only origin/main || { echo \"hoster: ERROR not ff to origin/main\"; exit 4; }
+  else
+    git pull --ff-only || exit 4
+  fi
+  echo \"hoster: tree \$(git rev-parse --short HEAD) \$(git log -1 --oneline)\"
+fi
 ./scripts/deploy.sh
 '"
 }
@@ -188,11 +204,11 @@ case "${PROJECT_SLUG}:${ENV_NAME}" in
     ;;
   pingmaster:hoster)
     commit_push_on_work "pingmaster"
-    ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc 'set -euo pipefail; cd \"\$HOME/pingmaster\"; ./scripts/deploy.sh'"
+    ssh -o BatchMode=yes "${SSH_HOSTER}" "bash --noprofile --norc -lc 'set -euo pipefail; cd \"\$HOME/pingmaster\"; chmod +x ./scripts/deploy-hoster.sh 2>/dev/null || true; ./scripts/deploy-hoster.sh'"
     ;;
   shectory-assist:hoster)
     commit_push_on_work "shectory-assist"
-    deploy_shectory_assist_work
+    deploy_shectory_assist_hoster
     ;;
   *:hoster)
     commit_push_on_work "${PROJECT_SLUG}"
@@ -203,6 +219,7 @@ case "${PROJECT_SLUG}:${ENV_NAME}" in
     echo "supported:"
     echo "  - cursorrpa hoster"
     echo "  - komissionka hoster"
+    echo "  - shectory-assist hoster"
     echo "  - <any> hoster (requires scripts/deploy.sh on hoster checkout)"
     exit 2
     ;;
