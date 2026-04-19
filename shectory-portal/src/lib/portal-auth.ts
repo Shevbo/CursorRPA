@@ -211,11 +211,15 @@ async function deliverAuthCode(email: string, code: string, purpose: string): Pr
         port === 465;
       const user = process.env.SMTP_USER?.trim();
       const pass = process.env.SMTP_PASSWORD ?? "";
+      const relaxTls =
+        process.env.SMTP_TLS_REJECT_UNAUTHORIZED === "false" ||
+        process.env.SMTP_TLS_REJECT_UNAUTHORIZED === "0";
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port,
         secure,
         auth: user ? { user, pass } : undefined,
+        ...(relaxTls ? { tls: { rejectUnauthorized: false } } : {}),
       });
       await transporter.sendMail({ from, to: email, subject, text: body });
       return { delivery: "smtp" };
