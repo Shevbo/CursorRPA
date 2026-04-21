@@ -48,15 +48,17 @@ function Upsert-SshConfigAlias([string]$Alias, [string]$HostName, [string]$User,
   $cfg = Join-Path $sshDir "config"
   if (!(Test-Path $sshDir)) { New-Item -ItemType Directory -Path $sshDir | Out-Null }
 
-  $block = @"
-
-Host $Alias
-  HostName $HostName
-  User $User
-  IdentityFile $IdentityFile
-  IdentitiesOnly yes
-  StrictHostKeyChecking accept-new
-"@
+  # Формируем блок без here-string (устойчивее к копипасте/кодировкам)
+  $blockLines = @(
+    "",
+    "Host $Alias",
+    "  HostName $HostName",
+    "  User $User",
+    "  IdentityFile $IdentityFile",
+    "  IdentitiesOnly yes",
+    "  StrictHostKeyChecking accept-new"
+  )
+  $block = ($blockLines -join "`r`n")
 
   if (!(Test-Path $cfg)) {
     Set-Content -Path $cfg -Value $block -Encoding ascii
@@ -67,7 +69,7 @@ Host $Alias
   $lines = Get-Content -Path $cfg
   $out = New-Object System.Collections.Generic.List[string]
   $skip = $false
-  $hostLine = ("Host " + $Alias).ToLowerInvariant()
+  $hostLine = ("host " + $Alias).ToLowerInvariant()
 
   foreach ($line in $lines) {
     $trim = ($line.Trim())
