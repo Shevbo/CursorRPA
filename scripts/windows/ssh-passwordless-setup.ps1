@@ -63,12 +63,32 @@ Host $Alias
     return
   }
 
-  $content = Get-Content -Path $cfg -Raw
+  # Удаляем существующий Host-блок этого алиаса без сложных regex (стабильно для PS 5/7)
+  $lines = Get-Content -Path $cfg
+  $out = New-Object System.Collections.Generic.List[string]
+  $skip = $false
+  $hostLine = ("Host " + $Alias).ToLowerInvariant()
 
-  # Удаляем существующий Host-блок этого алиаса (простая, но практичная реализация)
-  $pattern = "(?ms)^\s*Host\s+$([Regex]::Escape($Alias))\s*$.*?(?=^\s*Host\s+|\z)"
-  $newContent = [Regex]::Replace($content, $pattern, "").TrimEnd()
-  $newContent = $newContent + $block
+  foreach ($line in $lines) {
+    $trim = ($line.Trim())
+    $trimLower = $trim.ToLowerInvariant()
+
+    if ($trimLower -like "host *") {
+      # Начало нового блока Host
+      if ($trimLower -eq $hostLine) {
+        $skip = $true
+        continue
+      }
+      $skip = $false
+    }
+
+    if (-not $skip) {
+      [void]$out.Add($line)
+    }
+  }
+
+  # Склеиваем обратно + добавляем новый блок
+  $newContent = ($out -join "`r`n").TrimEnd() + $block
   Set-Content -Path $cfg -Value $newContent -Encoding ascii
 }
 
