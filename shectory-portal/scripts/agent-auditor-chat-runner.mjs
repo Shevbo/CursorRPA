@@ -69,7 +69,7 @@ async function drainQueueAfterAudit(prisma, sessionId, workspacePath, timeoutMs,
 
 const prisma = new PrismaClient();
 
-const AUDITOR_MODEL_ID = (process.env.SHECTORY_AUDITOR_AGENT_MODEL_ID || "gemini-3.1-pro").trim();
+const AUDITOR_MODEL_ID = (process.env.SHECTORY_AUDITOR_AGENT_MODEL_ID || "gemini-2.5-pro").trim();
 const MAX_REWORKS = Number(process.env.AUDITOR_MAX_REWORKS || "3") || 3;
 
 function safeJsonParse(s) {
