@@ -217,7 +217,16 @@ export async function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId, 
     return runLinemanPrompt(prompt, modelId, timeoutMs);
   }
   if (backend === "openclaw") {
-    return { ok: false, stdout: "", stderr: "backend openclaw ещё не реализован (Subsystem B)" };
+    const { runOpenclawAgent } = await import("./openclaw-cli.mjs");
+    const slug = String(process.env.SHECTORY_PROJECT_SLUG || "").toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    if (!slug) {
+      return { ok: false, stdout: "", stderr: "openclaw backend: SHECTORY_PROJECT_SLUG не задан" };
+    }
+    const agentId = "portal-" + slug;
+    const roleVal = String(process.env.ROLE_CHAT_MODEL || "gemini/gemini-3.1-pro-preview");
+    const tgt = modelIdToLinemanTarget(roleVal);
+    const modelArg = tgt ? `${tgt.provider}/${tgt.model}` : undefined;
+    return runOpenclawAgent({ agentId, message: prompt, modelId: modelArg, timeoutMs });
   }
 
   const env = slimAgentEnv();
