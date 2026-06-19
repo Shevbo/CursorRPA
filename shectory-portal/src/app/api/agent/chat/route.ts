@@ -17,6 +17,7 @@ import {
   type ChatAttachmentMeta,
 } from "@/lib/chat-attachments";
 import { loadRuntimeEnvIntoProcess } from "@/lib/portal-runtime-env";
+import { ensureProjectAgent } from "@/lib/openclaw-agent";
 
 function redactSecrets(text: string): string {
   return text.replace(/(sshpass\s+-p\s+)(\"[^\"]*\"|'[^']*'|\S+)/gi, "$1'***'");
@@ -59,14 +60,17 @@ function spawnAgentChat(
   project: Project,
   sessionId: string,
   userMsgId: string,
-  opts?: { notifyUserId?: string | null }
+  opts?: { notifyUserId?: string | null; projectSlug?: string }
 ) {
   const runnerPath = path.join(process.cwd(), "scripts", "agent-chat-runner.mjs");
   const payload = `msg:${userMsgId}`;
   const args = [runnerPath, sessionId, project.workspacePath, payload, String(getAgentPromptTimeoutMs())];
   const nuid = opts?.notifyUserId?.trim();
   if (nuid) args.push(nuid);
-  const child = spawn(process.execPath, args, { detached: true, stdio: "ignore" });
+  const spawnEnv = opts?.projectSlug
+    ? { ...process.env, SHECTORY_PROJECT_SLUG: opts.projectSlug }
+    : process.env;
+  const child = spawn(process.execPath, args, { detached: true, stdio: "ignore", env: spawnEnv });
   child.unref();
 }
 
@@ -81,7 +85,7 @@ async function enqueueAgentChat(
   project: Project,
   sessionId: string,
   userMsgId: string,
-  opts?: { notifyUserId?: string | null }
+  opts?: { notifyUserId?: string | null; projectSlug?: string }
 ): Promise<{ spawned: boolean }> {
   // Atomically claim the session if it's free (processingMsgId IS NULL → set it)
   const updated = await prisma.chatSession.updateMany({
@@ -226,7 +230,33 @@ export async function POST(req: Request) {
   }
 
   const notifyUserId = (await portalUserIdFromRequest(req)) ?? undefined;
-  const { spawned } = await enqueueAgentChat(project, sessionId, userMsg.id, { notifyUserId });
+
+  // Openclaw pre-flight: ensure per-project agent entry exists in openclaw.json before spawn.
+  // ROLE_CHAT_MODEL and SHECTORY_EXECUTOR_BACKEND are already in process.env after loadRuntimeEnvIntoProcess().
+  const executorBackend = (process.env.SHECTORY_EXECUTOR_BACKEND || "cursor_cli").trim();
+  if (executorBackend === "openclaw") {
+    try {
+      const roleChatModel = (process.env.ROLE_CHAT_MODEL || "gemini/gemini-2.5-flash").trim();
+      // Map portal provider to openclaw provider: "gemini/..." → "google/..."
+      const primary = roleChatModel.startsWith("gemini/")
+        ? "google/" + roleChatModel.slice("gemini/".length)
+        : roleChatModel;
+      ensureProjectAgent({
+        slug: project.slug,
+        workspace: project.workspacePath,
+        primary,
+        fallbacks: ["deepseek/deepseek-reasoner"],
+      });
+    } catch (e) {
+      // Non-fatal: log and continue — runner will surface the error if agent is missing
+      console.error("[openclaw pre-flight] ensureProjectAgent failed:", e);
+    }
+  }
+
+  const { spawned } = await enqueueAgentChat(project, sessionId, userMsg.id, {
+    notifyUserId,
+    projectSlug: executorBackend === "openclaw" ? project.slug : undefined,
+  });
 
   const userMsgOut = { ...userMsg, attachmentsJson };
 
