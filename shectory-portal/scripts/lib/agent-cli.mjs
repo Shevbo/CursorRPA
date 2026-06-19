@@ -140,6 +140,55 @@ async function runGeminiApiPrompt(prompt, modelId, timeoutMs) {
   }
 }
 
+/** "provider/model" → {provider, model} для Lineman (gemini→google). НЕ роль, а конкретная модель. */
+export function modelIdToLinemanTarget(modelId) {
+  const v = String(modelId || "");
+  const i = v.indexOf("/");
+  if (i <= 0) return null;
+  const portalProvider = v.slice(0, i);
+  const model = v.slice(i + 1);
+  if (!model) return null;
+  const provider = portalProvider === "gemini" ? "google" : portalProvider;
+  return { provider, model };
+}
+
+/** Вызов LLM через Lineman Klod-gateway (без tool'ов — для backend=lineman). */
+async function runLinemanPrompt(prompt, modelId, timeoutMs) {
+  const target = modelIdToLinemanTarget(modelId);
+  if (!target) {
+    return { ok: false, stdout: "", stderr: `backend=lineman требует modelId формата provider/model, получено: ${modelId}` };
+  }
+  const url = "http://127.0.0.1:9090/api/klod/ask";
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: ac.signal,
+      body: JSON.stringify({
+        agent: "portal",
+        provider: target.provider,
+        model: target.model,
+        prompt: String(prompt ?? ""),
+        max_tokens: 4000,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    clearTimeout(t);
+    if (!r.ok) {
+      return { ok: false, stdout: "", stderr: `[Lineman ${r.status}] ${j?.error || ""}` };
+    }
+    const text = String(j?.text || "").trim();
+    if (!text) return { ok: false, stdout: "", stderr: "Lineman klod/ask: пустой ответ" };
+    return { ok: true, stdout: text, stderr: "" };
+  } catch (e) {
+    clearTimeout(t);
+    const msg = e?.name === "AbortError" ? `timeout ${timeoutMs}ms` : String(e);
+    return { ok: false, stdout: "", stderr: `[Lineman] ${msg}` };
+  }
+}
+
 function resolveBackend(role) {
   const r = String(role || "executor");
   if (r === "auditor") {
@@ -163,6 +212,9 @@ export async function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId, 
   const backend = resolveBackend(role);
   if (backend === "gemini_api") {
     return runGeminiApiPrompt(prompt, modelId, timeoutMs);
+  }
+  if (backend === "lineman") {
+    return runLinemanPrompt(prompt, modelId, timeoutMs);
   }
 
   const env = slimAgentEnv();
