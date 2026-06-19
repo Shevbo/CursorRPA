@@ -17,7 +17,8 @@ export function upsertAgentEntry(cfg: any, spec: AgentSpec): any {
     id: spec.id,
     name: spec.id,
     workspace: spec.workspace,
-    model: { primary: spec.primary, fallbacks: spec.fallbacks, timeoutMs: 120000 },
+    // OpenClaw 2026.6.x: model принимает только primary/fallbacks; timeoutMs тут невалиден (отвергается валидатором).
+    model: { primary: spec.primary, fallbacks: spec.fallbacks },
   };
   const i = next.agents.list.findIndex((a: any) => a && a.id === spec.id);
   if (i >= 0) {
