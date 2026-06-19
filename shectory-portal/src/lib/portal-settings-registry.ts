@@ -56,7 +56,7 @@ export const PORTAL_SETTINGS_REGISTRY: PortalSettingDef[] = [
     description: "cursor_cli — Cursor Agent CLI; gemini_api — Google Generative Language API (нужен GEMINI_API_KEY).",
     defaultValue: "cursor_cli",
     group: "ai",
-    enumValues: ["cursor_cli", "gemini_api"],
+    enumValues: ["cursor_cli", "gemini_api", "lineman", "openclaw"],
   },
   {
     key: "SHECTORY_AUDITOR_BACKEND",
@@ -64,7 +64,33 @@ export const PORTAL_SETTINGS_REGISTRY: PortalSettingDef[] = [
     description: "Пусто = как у исполнителя.",
     defaultValue: "",
     group: "ai",
-    enumValues: ["", "cursor_cli", "gemini_api"],
+    enumValues: ["", "cursor_cli", "gemini_api", "lineman", "openclaw"],
+  },
+  {
+    key: "ROLE_CHAT_MODEL",
+    label: "Модель роли chat",
+    description: "Быстрая модель для интерактива. Формат provider/modelId.",
+    defaultValue: "gemini/gemini-2.5-flash",
+    group: "ai",
+    enumValues: [
+      "gemini/gemini-2.5-flash", "gemini/gemini-3.0-flash", "gemini/gemini-2.5-pro",
+      "gemini/gemini-3.1-pro-preview", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner",
+      "anthropic/claude-haiku-4-5-20251001", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8",
+      "lm-studio/qwen3.5-9b", "lm-studio/deepseek-r1-14b", "lm-studio/gemma-4-26b",
+    ],
+  },
+  {
+    key: "ROLE_THINK_MODEL",
+    label: "Модель роли think",
+    description: "Модель для анализа/аудита. Формат provider/modelId.",
+    defaultValue: "gemini/gemini-2.5-pro",
+    group: "ai",
+    enumValues: [
+      "gemini/gemini-2.5-flash", "gemini/gemini-3.0-flash", "gemini/gemini-2.5-pro",
+      "gemini/gemini-3.1-pro-preview", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner",
+      "anthropic/claude-haiku-4-5-20251001", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8",
+      "lm-studio/qwen3.5-9b", "lm-studio/deepseek-r1-14b", "lm-studio/gemma-4-26b",
+    ],
   },
   {
     key: "SHECTORY_EXECUTOR_AGENT_MODEL_ID",
