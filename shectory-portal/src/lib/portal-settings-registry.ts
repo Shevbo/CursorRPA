@@ -2,6 +2,7 @@
  * Реестр настраиваемых параметров портала (ключ = имя переменной окружения для раннеров).
  * Секреты хранятся в БД с isSecret; в UI не отображается значение.
  */
+import { roleEnumValues } from "./model-catalog";
 
 export type PortalSettingDef = {
   key: string;
@@ -72,12 +73,7 @@ export const PORTAL_SETTINGS_REGISTRY: PortalSettingDef[] = [
     description: "Быстрая модель для интерактива. Формат provider/modelId.",
     defaultValue: "gemini/gemini-2.5-flash",
     group: "ai",
-    enumValues: [
-      "gemini/gemini-2.5-flash", "gemini/gemini-3.0-flash", "gemini/gemini-2.5-pro",
-      "gemini/gemini-3.1-pro-preview", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner",
-      "anthropic/claude-haiku-4-5-20251001", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8",
-      "lm-studio/qwen3.5-9b", "lm-studio/deepseek-r1-14b", "lm-studio/gemma-4-26b",
-    ],
+    enumValues: roleEnumValues(),
   },
   {
     key: "ROLE_THINK_MODEL",
@@ -85,12 +81,7 @@ export const PORTAL_SETTINGS_REGISTRY: PortalSettingDef[] = [
     description: "Модель для анализа/аудита. Формат provider/modelId.",
     defaultValue: "gemini/gemini-2.5-pro",
     group: "ai",
-    enumValues: [
-      "gemini/gemini-2.5-flash", "gemini/gemini-3.0-flash", "gemini/gemini-2.5-pro",
-      "gemini/gemini-3.1-pro-preview", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner",
-      "anthropic/claude-haiku-4-5-20251001", "anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-8",
-      "lm-studio/qwen3.5-9b", "lm-studio/deepseek-r1-14b", "lm-studio/gemma-4-26b",
-    ],
+    enumValues: roleEnumValues(),
   },
   {
     key: "SHECTORY_EXECUTOR_AGENT_MODEL_ID",

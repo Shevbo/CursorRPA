@@ -216,6 +216,9 @@ export async function runAgentPrompt(workspacePath, prompt, timeoutMs, modelId, 
   if (backend === "lineman") {
     return runLinemanPrompt(prompt, modelId, timeoutMs);
   }
+  if (backend === "openclaw") {
+    return { ok: false, stdout: "", stderr: "backend openclaw ещё не реализован (Subsystem B)" };
+  }
 
   const env = slimAgentEnv();
   const args = ["-p", "--trust", "--output-format", "text", "--workspace", workspacePath];
