@@ -49,6 +49,7 @@ export type PublicSettingRow = {
   group: string;
   isSecret: boolean;
   secretSet: boolean;
+  enumValues?: string[];
 };
 
 /** Для UI: секреты без значения, только флаг заданности. */
@@ -63,6 +64,7 @@ export async function listPublicSettings(): Promise<PublicSettingRow[]> {
     group: r.groupName,
     isSecret: r.isSecret,
     secretSet: r.isSecret && r.value.length > 0,
+    enumValues: PORTAL_SETTINGS_REGISTRY.find((d) => d.key === r.key)?.enumValues,
   }));
 }
 
