@@ -58,6 +58,7 @@ model Project {
   deployEnvironments    DeployEnvironment[]
   agentRuns             AgentRun[]
   assistBotAllowlist     AssistBotAllowlistEntry[]
+  projectModels          ProjectModel[]
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
@@ -72,6 +73,7 @@ model AssistBotAllowlistEntry {
   telegramUserId   String   @map("telegram_user_id")
   note             String?  @db.Text
   enabled          Boolean  @default(true)
+  useProxy         Boolean  @default(false) @map("use_proxy")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -459,4 +461,40 @@ model PortalSetting {
 
   @@index([groupName])
   @@map("portal_settings")
+}
+
+
+/// Поставщик AI-моделей (OpenAI, Claude, DeepSeek, OpenRouter, Ollama)
+model ModelProvider {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  label     String
+  baseUrl   String?
+  apiKeyRef String?
+  enabled   Boolean  @default(true)
+  icon      String?  @default("robot")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  projectModels ProjectModel[]
+
+  @@map("model_providers")
+}
+
+/// Модель, прикреплённая к проекту (связь many-to-many с метаданными)
+model ProjectModel {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  providerId String   @map("provider_id")
+  modelId    String   @map("model_id")
+  label      String
+  isDefault  Boolean  @default(false) @map("is_default")
+  weight     Int      @default(10)  // 1-100, чем выше тем приоритетнее
+  useProxy Boolean @default(false) @map("use_proxy")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  provider   ModelProvider @relation(fields: [providerId], references: [id])
+
+  @@unique([projectId, providerId, modelId])
+  @@map("project_models")
 }

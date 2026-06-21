@@ -8,7 +8,9 @@ import { RefreshArchitectureButton } from "@/components/RefreshArchitectureButto
 import { buildAdminAssistantPrompt } from "@/lib/admin-assistant-prompt";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ProjectAIModelsPanel } from "@/components/ProjectAIModelsPanel";
 import { ProjectDescriptionChecklist } from "@/components/ProjectDescriptionChecklist";
+import { prismaStudioUrlFromRegistryMeta } from "@/lib/project-devtools";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,7 @@ export default async function ProjectPage({ params }: { params: { slug: string }
   } | null);
 
   const assistantPromptForMeta = buildAdminAssistantPrompt(project);
+  const prismaStudioUrl = prismaStudioUrlFromRegistryMeta(project.registryMetaJson);
 
   return (
     <main className="mx-auto flex h-[100dvh] max-h-[100dvh] min-w-0 w-full max-w-7xl flex-col overflow-x-hidden overflow-hidden px-3 py-2 sm:px-4">
@@ -225,6 +228,8 @@ export default async function ProjectPage({ params }: { params: { slug: string }
                 </div>
               )}
             </div>
+
+            <ProjectAIModelsPanel projectSlug={project.slug} />
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <h3 className="mb-3 text-sm font-medium text-slate-400">
@@ -278,6 +283,16 @@ export default async function ProjectPage({ params }: { params: { slug: string }
             <span className="break-words">Спросить агента (админ-команды)</span>
           </a>
           <RefreshArchitectureButton slug={project.slug} />
+          {prismaStudioUrl && (
+            <a
+              href={prismaStudioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] max-w-full items-center rounded-lg border border-emerald-800/70 bg-emerald-950/50 px-3 py-1.5 text-sm text-emerald-200 hover:bg-emerald-900/40 touch-manipulation"
+            >
+              <span className="break-words">Prisma Studio</span>
+            </a>
+          )}
         </div>
       </header>
 
